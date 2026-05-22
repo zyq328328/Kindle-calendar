@@ -3,6 +3,7 @@
 导航栏: y >= 700
 主内容区: y < 700
 """
+import threading
 from datetime import date, timedelta
 from typing import Literal
 
@@ -23,23 +24,28 @@ SWIPE_RIGHT_X = 400  # x > 400: 右滑 next_day
 TAP_CENTER_X_MIN = 200
 TAP_CENTER_X_MAX = 400
 
-# 当前视图状态
+# 当前视图状态（带线程锁保护）
+_state_lock = threading.Lock()
 _current_view: Literal["day", "three_day", "todo", "habit"] = "day"
 _current_date: date = date.today()
 
 def get_current_view() -> str:
-    return _current_view
+    with _state_lock:
+        return _current_view
 
 def get_current_date() -> str:
-    return _current_date.isoformat()
+    with _state_lock:
+        return _current_date.isoformat()
 
 def set_view(view: str) -> None:
     global _current_view
-    _current_view = view
+    with _state_lock:
+        _current_view = view
 
 def set_date(d: date) -> None:
     global _current_date
-    _current_date = d
+    with _state_lock:
+        _current_date = d
 
 def route_touch(x: int, y: int, action: str) -> tuple[str, str | None]:
     """
@@ -54,7 +60,8 @@ def route_touch(x: int, y: int, action: str) -> tuple[str, str | None]:
     if y >= NAV_Y:
         for x_min, x_max, view_name, label in NAV_BUTTONS:
             if x_min <= x < x_max:
-                _current_view = view_name
+                with _state_lock:
+                    _current_view = view_name
                 return ("switch_view", view_name)
         return ("none", None)
 
@@ -62,11 +69,13 @@ def route_touch(x: int, y: int, action: str) -> tuple[str, str | None]:
     if action == "tap":
         if x < SWIPE_LEFT_X:
             # 左滑 - 切换到前一天
-            _current_date = _current_date - timedelta(days=1)
+            with _state_lock:
+                _current_date = _current_date - timedelta(days=1)
             return ("prev_day", None)
         elif x > SWIPE_RIGHT_X:
             # 右滑 - 切换到下一天
-            _current_date = _current_date + timedelta(days=1)
+            with _state_lock:
+                _current_date = _current_date + timedelta(days=1)
             return ("next_day", None)
         else:
             # 中间区域 - 选中当前日期

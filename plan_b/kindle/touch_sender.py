@@ -12,8 +12,8 @@ import struct
 import subprocess
 from pathlib import Path
 
-# 目标服务端
-SERVER_URL = "http://192.168.10.7:8082/touch"
+# 目标服务端（方案B，已废弃）
+SERVER_URL = os.environ.get("SERVER_URL", "http://192.168.10.7:8082/touch")
 
 # 触摸设备
 EVENT_DEVICE = "/dev/input/event1"

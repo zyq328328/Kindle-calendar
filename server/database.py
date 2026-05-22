@@ -205,30 +205,28 @@ def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
 
-    # 从 start_date（习惯开始日期）到查询范围末尾，生成所有应打卡的日期
+    # 从 habit 开始日期（或查询范围起始）到末尾，生成应打卡的日期
     habit_start = datetime.strptime(habit.get("start_date", habit["date"]), "%Y-%m-%d")
+    # 直接从查询范围起始日和 habit 起始日的较大者开始，避免远期习惯迭代过慢
+    current = max(habit_start, start)
 
     occurrences = []
-    current = habit_start
     while current <= end:
-        if current >= start:
-            occ = dict(habit)
-            occ["date"] = current.strftime("%Y-%m-%d")
-            # 判断今天是否已打卡（用 last_completed_date）
-            last_done = habit.get("last_completed_date")
-            occ["completed"] = bool(last_done and last_done == current.strftime("%Y-%m-%d"))
-            occurrences.append(occ)
+        occ = dict(habit)
+        occ["date"] = current.strftime("%Y-%m-%d")
+        last_done = habit.get("last_completed_date")
+        occ["completed"] = bool(last_done and last_done == current.strftime("%Y-%m-%d"))
+        occurrences.append(occ)
         # 推进到下一个周期
         if rule == "daily":
             current += timedelta(days=1)
         elif rule == "weekdays":
             current += timedelta(days=1)
-            while current.weekday() >= 5:  # 跳过周末
+            while current.weekday() >= 5:
                 current += timedelta(days=1)
         elif rule == "weekly":
             current += timedelta(weeks=1)
         elif rule == "monthly":
-            # 每月同日
             month = current.month + 1
             year = current.year
             if month > 12:

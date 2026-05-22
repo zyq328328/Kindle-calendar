@@ -140,8 +140,8 @@ calendar_active = False
 display_loop_running = False
 _stop_event = threading.Event()  # 用于可中断的 sleep
 _state_lock = threading.Lock()
-KINDLE_HOST = "192.168.10.72"
-KINDLE_KEY = "/home/openclaw/.ssh/kindle_key"
+KINDLE_HOST = os.environ.get("KINDLE_HOST", "192.168.10.72")
+KINDLE_KEY = os.environ.get("KINDLE_KEY", "/home/openclaw/.ssh/kindle_key")
 
 
 def serialize_event(e: dict) -> dict:

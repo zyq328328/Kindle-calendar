@@ -5,10 +5,10 @@ Kindle 本地 PIL 日历渲染器 - 新版左侧导航布局
 - 左侧导航栏：80px宽
 - 右侧主内容区：720px宽
 """
-import os, sys, json, datetime, urllib.request
+import os, sys, json, datetime, urllib.request, functools
 from PIL import Image, ImageDraw, ImageFont
 
-SERVER_URL = "http://192.168.10.7:8082/api/events"
+SERVER_URL = os.environ.get("SERVER_URL", "http://192.168.10.7:8082/api/events")
 
 # ========== 尺寸常量 ==========
 W, H = 800, 600
@@ -51,6 +51,7 @@ def find_font():
     return None
 
 
+@functools.lru_cache(maxsize=16)
 def make_font(size):
     try:
         return ImageFont.truetype(find_font(), size)
