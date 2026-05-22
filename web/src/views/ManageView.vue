@@ -175,7 +175,7 @@ const synced = ref(true)
 
 const form = ref({ title: '', date: '', time: '', type: 'schedule', importance: 'not_important', urgency: 'not_urgent', description: '', is_countdown: false, recurrence_rule: 'none', start_date: '', last_completed_date: '', parent_id: null })
 
-onMounted(() => store.fetchEvents())
+onMounted(() => { store.fetchEvents(); store.fetchEventsTree() })
 
 // 将事件树扁平化，并附加 depth 用于缩进
 const flatEvents = computed(() => {
