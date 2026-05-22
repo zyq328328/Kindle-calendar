@@ -116,8 +116,8 @@ def read_touch_event():
                 data = os.read(fd, 16)  # 每次读一个完整事件（16 bytes）
                 if len(data) < 16:
                     break
-                # iiHHI: sec(4) + usec(4) + type(2) + code(2) + value(4)
-                tv_sec, tv_usec, ev_type, code, value = struct.unpack("iiHHI", data)
+                # iiHHi: sec(4) + usec(4) + type(2) + code(2) + value(4)
+                tv_sec, tv_usec, ev_type, code, value = struct.unpack("iiHHi", data)
 
                 if ev_type == EV_ABS:
                     if code == ABS_X:

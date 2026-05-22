@@ -182,7 +182,7 @@ def render_frame(view: str) -> bytes:
     if view == "day":
         _render_day_view(draw, now, font_date, font_medium, font_small, font_time)
     elif view == "week":
-        _render_week_view(draw, now, font_tiny, font_small, font_medium, font_title)
+        _render_three_day_view(draw, now, font_tiny, font_small, font_medium, font_title)
     elif view == "todo":
         _render_todo_view(draw, now, font_small, font_medium)
     elif view == "habit":
@@ -232,9 +232,9 @@ def _render_day_view(draw, now, font_date, font_medium, font_small, font_time):
         draw.text((390, y), "(今日无日程)", fill=120, font=font_small)
 
 
-def _render_week_view(draw, now, font_tiny, font_small, font_medium, font_title):
-    """7日视图：横向排列 today + 未来6天，每天一列
-    布局：顶部月份横幅 → 7列日期+星期+日程
+def _render_three_day_view(draw, now, font_tiny, font_small, font_medium, font_title):
+    """3日视图：横向排列 today + 未来2天，每天一列
+    布局：顶部月份横幅 → 3列日期+星期+日程
     """
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     month_str = now.strftime("%Y年 %m月")
@@ -560,15 +560,18 @@ def switch_view(view_name: str):
         raise HTTPException(status_code=400, detail=f"Invalid view. Must be one of {valid}")
     with _state_lock:
         current_view = view_name
-    png = render_frame(current_view)
+        view = current_view
+    png = render_frame(view)
     push_frame_to_kindle(png)
-    return {"status": "ok", "view": current_view}
+    return {"status": "ok", "view": view}
 
 
 @app.get("/frame")
 def get_frame():
     """HTTP 抓帧接口（调试用，返回当前视图 PNG）"""
-    return Response(content=render_frame(current_view), media_type="image/png")
+    with _state_lock:
+        view = current_view
+    return Response(content=render_frame(view), media_type="image/png")
 
 
 @app.get("/frame/{view_name}")
@@ -583,9 +586,11 @@ def get_frame_view(view_name: str):
 @app.get("/debug/partial_push")
 def debug_partial_push():
     """手动触发一次 partial push（调试用）"""
-    png = render_frame(current_view)
+    with _state_lock:
+        view = current_view
+    png = render_frame(view)
     push_frame_to_kindle_partial(png)
-    return {"status": "ok", "view": current_view, "size": len(png)}
+    return {"status": "ok", "view": view, "size": len(png)}
 
 
 # SPA 路由：所有非 API 路径返回 index.html
