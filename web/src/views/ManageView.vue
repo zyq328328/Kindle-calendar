@@ -237,13 +237,9 @@ const flatFiltered = computed(() => {
       const matchUrg = !fUrg || ev.urgency === fUrg
       if (matchText && matchType && matchImp && matchUrg) {
         result.push(evWithDepth)
-      } else if (ev.children && ev.children.length) {
-        // 父任务不匹配但子任务可能匹配，仍展示父任务作为容器
-        const before = result.length
+      }
+      if (ev.children && ev.children.length) {
         flatten(ev.children, depth + 1)
-        if (result.length > before) {
-          result.push(evWithDepth)
-        }
       }
     }
   }
