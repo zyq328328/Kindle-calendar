@@ -531,19 +531,22 @@ def display_loop():
 @app.post("/start")
 def start_calendar():
     global calendar_active, display_loop_running
-    if not display_loop_running:
-        calendar_active = True
-        display_loop_running = True
-        t = threading.Thread(target=display_loop, daemon=True)
-        t.start()
+    with _state_lock:
+        if not display_loop_running:
+            calendar_active = True
+            display_loop_running = True
+            _stop_event.clear()
+            t = threading.Thread(target=display_loop, daemon=True)
+            t.start()
     return {"status": "started", "active": calendar_active, "view": current_view}
 
 
 @app.post("/stop")
 def stop_calendar():
     global calendar_active, display_loop_running
-    calendar_active = False
-    display_loop_running = False
+    with _state_lock:
+        calendar_active = False
+        display_loop_running = False
     _stop_event.set()  # 立即唤醒 display_loop 的 wait()
     return {"status": "stopped", "active": calendar_active}
 
@@ -555,7 +558,8 @@ def switch_view(view_name: str):
     valid = ["day", "week", "todo", "habit"]
     if view_name not in valid:
         raise HTTPException(status_code=400, detail=f"Invalid view. Must be one of {valid}")
-    current_view = view_name
+    with _state_lock:
+        current_view = view_name
     png = render_frame(current_view)
     push_frame_to_kindle(png)
     return {"status": "ok", "view": current_view}

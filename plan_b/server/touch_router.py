@@ -20,6 +20,14 @@ from regions import route_touch, get_current_view, get_current_date, set_view, s
 # 方案B本地模型
 from plan_b_models import TouchRequest, TouchResponse, RegionCurrent, FrameUpdate
 
+
+def serialize_event(e: dict) -> dict:
+    """将 SQLite 返回的 INTEGER 布尔值转为 Python bool"""
+    e["is_countdown"] = bool(e["is_countdown"])
+    e["completed"] = bool(e["completed"])
+    return e
+
+
 app = FastAPI(title="Kindle Calendar API - Plan B", version="1.1.0")
 
 app.add_middleware(
@@ -43,19 +51,14 @@ def health():
 @app.get("/api/events", response_model=list[km.Event])
 def list_events():
     events = database.get_all_events()
-    for e in events:
-        e["is_countdown"] = bool(e["is_countdown"])
-        e["completed"] = bool(e["completed"])
-    return events
+    return [serialize_event(e) for e in events]
 
 @app.post("/api/events", response_model=km.Event, status_code=201)
 def create(event: km.EventCreate):
     event_data = event.model_dump()
     created = database.create_event(event_data)
     if created:
-        created["is_countdown"] = bool(created["is_countdown"])
-        created["completed"] = bool(created["completed"])
-        return created
+        return serialize_event(created)
     raise HTTPException(status_code=500, detail="Failed to create event")
 
 @app.get("/api/events/{event_id}", response_model=km.Event)
@@ -63,9 +66,7 @@ def get_event(event_id: int):
     event = database.get_event_by_id(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    event["is_countdown"] = bool(event["is_countdown"])
-    event["completed"] = bool(event["completed"])
-    return event
+    return serialize_event(event)
 
 @app.put("/api/events/{event_id}", response_model=km.Event)
 def modify_event(event_id: int, event: km.EventUpdate):
@@ -75,9 +76,7 @@ def modify_event(event_id: int, event: km.EventUpdate):
     update_data = event.model_dump(exclude_unset=True)
     updated = database.update_event(event_id, update_data)
     if updated:
-        updated["is_countdown"] = bool(updated["is_countdown"])
-        updated["completed"] = bool(updated["completed"])
-        return updated
+        return serialize_event(updated)
     raise HTTPException(status_code=500, detail="Failed to update event")
 
 @app.delete("/api/events/{event_id}")
@@ -92,10 +91,7 @@ def sync(since: str | None = None):
         events = database.get_events_since(since)
     else:
         events = database.get_all_events()
-    for e in events:
-        e["is_countdown"] = bool(e["is_countdown"])
-        e["completed"] = bool(e["completed"])
-    return km.SyncResponse(events=events, server_time=database.get_server_time())
+    return km.SyncResponse(events=[serialize_event(e) for e in events], server_time=database.get_server_time())
 
 # ============ 方案B 触摸路由端点 ==============
 

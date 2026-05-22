@@ -300,7 +300,7 @@ async function checkin(ev) {
 }
 
 async function toggleDone(ev) {
-  await store.updateEvent(ev.id, { ...ev, completed: !ev.completed })
+  await store.updateEvent(ev.id, { completed: !ev.completed })
   synced.value = false
 }
 
