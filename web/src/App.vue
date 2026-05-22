@@ -27,6 +27,7 @@ const connected = ref(false)
 onMounted(async () => {
   connected.value = await calendarStore.checkHealth()
   await calendarStore.fetchEvents()
+  await calendarStore.fetchEventsTree()
 })
 </script>
 

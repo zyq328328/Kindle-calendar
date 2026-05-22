@@ -4,6 +4,7 @@ import { eventApi } from '../api/events'
 
 export const useCalendarStore = defineStore('calendar', () => {
   const events = ref([])
+  const tree = ref([])      // 嵌套树结构（含 children）
   const loading = ref(false)
 
   async function checkHealth() {
@@ -24,9 +25,20 @@ export const useCalendarStore = defineStore('calendar', () => {
     }
   }
 
+  async function fetchEventsTree() {
+    loading.value = true
+    try {
+      tree.value = await eventApi.tree()
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function createEvent(data) {
     const created = await eventApi.create(data)
     events.value.push(created)
+    // 重新获取树
+    await fetchEventsTree()
     return created
   }
 
@@ -34,19 +46,22 @@ export const useCalendarStore = defineStore('calendar', () => {
     const updated = await eventApi.update(id, data)
     const idx = events.value.findIndex(e => e.id === id)
     if (idx !== -1) events.value[idx] = updated
+    await fetchEventsTree()
     return updated
   }
 
   async function deleteEvent(id) {
     await eventApi.delete(id)
     events.value = events.value.filter(e => e.id !== id)
+    await fetchEventsTree()
   }
 
   async function checkinHabit(id, date) {
     const updated = await eventApi.checkin(id, date)
     const idx = events.value.findIndex(e => e.id === id)
     if (idx !== -1) events.value[idx] = { ...events.value[idx], ...updated, completed: true }
+    await fetchEventsTree()
   }
 
-  return { events, loading, checkHealth, fetchEvents, createEvent, updateEvent, deleteEvent, checkinHabit }
+  return { events, tree, loading, checkHealth, fetchEvents, fetchEventsTree, createEvent, updateEvent, deleteEvent, checkinHabit }
 })

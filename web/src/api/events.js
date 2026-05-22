@@ -15,6 +15,8 @@ api.interceptors.response.use(
 export const eventApi = {
   list: () => api.get('/events').then(r => r.data),
 
+  tree: () => api.get('/events/tree').then(r => r.data),
+
   create: (data) => api.post('/events', data).then(r => r.data),
 
   update: (id, data) => api.put(`/events/${id}`, data).then(r => r.data),

@@ -33,6 +33,7 @@ def init_db():
                 recurrence_rule TEXT DEFAULT 'none',
                 start_date TEXT,
                 last_completed_date TEXT,
+                parent_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -65,8 +66,8 @@ def create_event(event_data: dict) -> dict:
     with get_db() as conn:
         c = conn.cursor()
         c.execute("""
-            INSERT INTO events (title, description, date, time, importance, urgency, is_countdown, countdown_target, completed, type, recurrence_rule, start_date, last_completed_date, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO events (title, description, date, time, importance, urgency, is_countdown, countdown_target, completed, type, recurrence_rule, start_date, last_completed_date, parent_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             event_data["title"],
             event_data.get("description", ""),
@@ -81,6 +82,7 @@ def create_event(event_data: dict) -> dict:
             event_data.get("recurrence_rule", "none"),
             event_data.get("start_date"),
             event_data.get("last_completed_date"),
+            event_data.get("parent_id"),
             now,
             now
         ))
@@ -91,7 +93,7 @@ def update_event(event_id: int, event_data: dict) -> Optional[dict]:
     now = datetime.now().isoformat()
     updates = []
     values = []
-    for key in ["title", "description", "date", "time", "importance", "urgency", "is_countdown", "countdown_target", "completed", "type", "recurrence_rule", "start_date", "last_completed_date"]:
+    for key in ["title", "description", "date", "time", "importance", "urgency", "is_countdown", "countdown_target", "completed", "type", "recurrence_rule", "start_date", "last_completed_date", "parent_id"]:
         if key in event_data:
             updates.append(f"{key} = ?")
             if key in ["is_countdown", "completed"]:
@@ -116,6 +118,31 @@ def delete_event(event_id: int) -> bool:
         conn.commit()
         return c.rowcount > 0
 
+def get_children(parent_id: int) -> list[dict]:
+    """获取某个父任务的所有直接子任务"""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT * FROM events WHERE parent_id = ? ORDER BY date ASC, time ASC", (parent_id,))
+        rows = c.fetchall()
+        return [dict(row) for row in rows]
+
+def get_event_tree() -> list[dict]:
+    """获取扁平化的事件列表，每个事件带 children 字段（含子任务）"""
+    all_events = get_all_events()
+    # 构建 parent_id -> children 映射
+    children_map = {}
+    for ev in all_events:
+        pid = ev.get("parent_id")
+        if pid is not None:
+            if pid not in children_map:
+                children_map[pid] = []
+            children_map[pid].append(ev)
+    # 给每个事件附加 children
+    for ev in all_events:
+        ev["children"] = children_map.get(ev["id"], [])
+    # 返回顶级任务（无 parent_id）
+    return [ev for ev in all_events if ev.get("parent_id") is None]
+
 def migrate_add_missing_columns():
     """为已有表添加新字段"""
     with get_db() as conn:
@@ -129,6 +156,7 @@ def migrate_add_missing_columns():
             ("recurrence_rule", "TEXT DEFAULT 'none'"),
             ("start_date", "TEXT"),
             ("last_completed_date", "TEXT"),
+            ("parent_id", "INTEGER REFERENCES events(id) ON DELETE CASCADE"),
         ]
         for col_name, col_def in migrations:
             if col_name not in existing:

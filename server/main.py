@@ -6,11 +6,11 @@ from fastapi.staticfiles import StaticFiles
 from typing import Optional
 from datetime import datetime, timedelta
 
-from models import EventCreate, EventUpdate, Event, SyncResponse
+from models import EventCreate, EventUpdate, Event, SyncResponse, EventTreeItem
 from database import (
     get_all_events, get_events_since, get_event_by_id,
     create_event, update_event, delete_event, get_server_time,
-    get_events_in_range
+    get_events_in_range, get_event_tree
 )
 
 app = FastAPI(title="Kindle Calendar API", version="1.0.0")
@@ -49,6 +49,18 @@ def list_events(start: Optional[str] = None, end: Optional[str] = None):
         e["is_countdown"] = bool(e["is_countdown"])
         e["completed"] = bool(e["completed"])
     return events
+
+@app.get("/api/events/tree", response_model=list[EventTreeItem])
+def list_event_tree():
+    """获取事件树：顶级任务 + 嵌套的 children（含缩进层级）"""
+    tree = get_event_tree()
+    for e in tree:
+        e["is_countdown"] = bool(e["is_countdown"])
+        e["completed"] = bool(e["completed"])
+        for c in e.get("children", []):
+            c["is_countdown"] = bool(c["is_countdown"])
+            c["completed"] = bool(c["completed"])
+    return tree
 
 @app.post("/api/events", response_model=Event, status_code=201)
 def create(event: EventCreate):
