@@ -8,6 +8,7 @@ DATABASE_PATH = "/opt/kindle-calendar/kindle_calendar.db"
 @contextmanager
 def get_db():
     conn = sqlite3.connect(DATABASE_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
     conn.row_factory = sqlite3.Row
     try:
         yield conn
@@ -172,6 +173,9 @@ def migrate_priority_to_importance_urgency():
         columns = {col[1] for col in c.fetchall()}
         if "importance" not in columns:
             return  # 还没添加新字段，跳过
+
+        if "priority" not in columns:
+            return  # priority 列不存在，无需迁移
 
         c.execute("SELECT id, priority FROM events WHERE priority IS NOT NULL AND priority != '' AND priority != 'normal'")
         for row in c.fetchall():

@@ -66,6 +66,19 @@ def tb(font, text):
         return 0
 
 
+def get_priority_color(ev):
+    """根据 importance + urgency 返回颜色（替代废弃的 priority 字段）"""
+    imp = ev.get("importance", "not_important")
+    urg = ev.get("urgency", "not_urgent")
+    if imp == "important" and urg == "urgent":
+        return 0      # 红色
+    elif imp == "important":
+        return 40     # 蓝色
+    elif urg == "urgent":
+        return 200    # 橙色
+    return 160        # 灰色
+
+
 def fetch_events(date_str=None):
     try:
         req = urllib.request.Request(SERVER_URL)
@@ -114,8 +127,7 @@ def render_nav_sidebar(draw, active_view):
 
 def touch_to_view(x, y):
     """触摸坐标 → 视图名"""
-    if x < NAV_W:
-        # 左侧导航栏
+    if x < NAV_W and y >= 10:
         idx = (y - 10) // 52
         idx = max(0, min(idx, len(NAV_ITEMS) - 1))
         return NAV_ITEMS[idx][1]
@@ -145,7 +157,8 @@ def render_home_view(draw, events):
     # 右侧统计
     today_evs = [e for e in events if e.get("date", "").startswith(today_str)]
     pending = [e for e in events if not e.get("completed")]
-    urgent = [e for e in events if e.get("priority") == "urgent" and not e.get("completed")]
+    urgent = [e for e in events
+              if e.get("importance") == "important" and e.get("urgency") == "urgent" and not e.get("completed")]
     draw.text((MAIN_X + 130, 15), f"今日 {len(today_evs)}", font=font_small, fill=80)
     draw.text((MAIN_X + 130, 40), f"待办 {len(pending)}", font=font_small, fill=80)
     draw.text((MAIN_X + 130, 65), f"紧急 {len(urgent)}", font=font_small, fill=0)
@@ -161,8 +174,7 @@ def render_home_view(draw, events):
         for ev in today_evs[:10]:
             time_str = ev.get("time", "") or ""
             title = ev.get("title", "")[:16]
-            priority = ev.get("priority", "normal")
-            color = {"urgent": 0, "important": 40, "normal": 160}[priority]
+            color = get_priority_color(ev)
 
             # 左侧色条
             draw.rectangle([(MAIN_X + 10, y + 2), (MAIN_X + 14, y + 26)], fill=color)
@@ -206,8 +218,7 @@ def render_day_view(draw, date_str, events):
         for ev in events[:12]:
             time_str = ev.get("time", "") or ""
             title = ev.get("title", "")[:16]
-            priority = ev.get("priority", "normal")
-            color = {"urgent": 0, "important": 40, "normal": 160}[priority]
+            color = get_priority_color(ev)
 
             draw.rectangle([(MAIN_X + 10, y + 2), (MAIN_X + 14, y + 26)], fill=color)
             text = f"{time_str} {title}" if time_str else f"    {title}"
@@ -277,8 +288,7 @@ def render_three_day_view(draw, date_str, events_by_date):
                 time_str = ev.get("time", "")[:5] if ev.get("time") else ""
                 title = ev.get("title", "")[:10]
                 completed = ev.get("completed", False)
-                priority = ev.get("priority", "normal")
-                color = {"urgent": 0, "important": 50, "normal": 140}[priority]
+                color = get_priority_color(ev)
 
                 # 优先级色条
                 draw.rectangle([(x + 4, y + 2), (x + 8, y + 20)], fill=color)
@@ -310,8 +320,7 @@ def render_list_view(draw, events):
     for ev in pending[:15]:
         time_str = ev.get("time", "") or ""
         title = ev.get("title", "")[:18]
-        priority = ev.get("priority", "normal")
-        color = {"urgent": 0, "important": 40, "normal": 160}[priority]
+        color = get_priority_color(ev)
 
         # checkbox方框
         draw.rectangle([(MAIN_X + 10, y + 2), (MAIN_X + 24, y + 16)], outline=100, width=1)

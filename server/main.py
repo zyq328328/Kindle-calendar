@@ -45,21 +45,16 @@ def list_events(start: Optional[str] = None, end: Optional[str] = None):
         events = get_events_in_range(start, end)
     else:
         events = get_all_events()
-    for e in events:
-        e["is_countdown"] = bool(e["is_countdown"])
-        e["completed"] = bool(e["completed"])
-    return events
+    return [serialize_event(e) for e in events]
 
-@app.get("/api/events/tree", response_model=list[EventTreeItem])
+@app.get("/api/events/tree")
 def list_event_tree():
     """获取事件树：顶级任务 + 嵌套的 children（含缩进层级）"""
     tree = get_event_tree()
     for e in tree:
-        e["is_countdown"] = bool(e["is_countdown"])
-        e["completed"] = bool(e["completed"])
+        serialize_event(e)
         for c in e.get("children", []):
-            c["is_countdown"] = bool(c["is_countdown"])
-            c["completed"] = bool(c["completed"])
+            serialize_event(c)
     return tree
 
 @app.post("/api/events", response_model=Event, status_code=201)
@@ -67,9 +62,7 @@ def create(event: EventCreate):
     event_data = event.model_dump()
     created = create_event(event_data)
     if created:
-        created["is_countdown"] = bool(created["is_countdown"])
-        created["completed"] = bool(created["completed"])
-        return created
+        return serialize_event(created)
     raise HTTPException(status_code=500, detail="Failed to create event")
 
 @app.get("/api/events/{event_id}", response_model=Event)
@@ -77,9 +70,7 @@ def get_event(event_id: int):
     event = get_event_by_id(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    event["is_countdown"] = bool(event["is_countdown"])
-    event["completed"] = bool(event["completed"])
-    return event
+    return serialize_event(event)
 
 @app.put("/api/events/{event_id}", response_model=Event)
 def modify_event(event_id: int, event: EventUpdate):
@@ -89,9 +80,7 @@ def modify_event(event_id: int, event: EventUpdate):
     update_data = event.model_dump(exclude_unset=True)
     updated = update_event(event_id, update_data)
     if updated:
-        updated["is_countdown"] = bool(updated["is_countdown"])
-        updated["completed"] = bool(updated["completed"])
-        return updated
+        return serialize_event(updated)
     raise HTTPException(status_code=500, detail="Failed to update event")
 
 @app.delete("/api/events/{event_id}")
@@ -109,8 +98,9 @@ def habit_checkin(event_id: int, date: str):
     if ev.get("type") != "habit":
         raise HTTPException(status_code=400, detail="Not a habit")
     updated = update_event(event_id, {"last_completed_date": date})
-    updated["completed"] = bool(updated.get("completed"))
-    return updated
+    if not updated:
+        raise HTTPException(status_code=500, detail="Update failed")
+    return serialize_event(updated)
 
 @app.get("/api/sync", response_model=SyncResponse)
 def sync(since: Optional[str] = None):
@@ -118,10 +108,7 @@ def sync(since: Optional[str] = None):
         events = get_events_since(since)
     else:
         events = get_all_events()
-    for e in events:
-        e["is_countdown"] = bool(e["is_countdown"])
-        e["completed"] = bool(e["completed"])
-    return SyncResponse(events=events, server_time=get_server_time())
+    return SyncResponse(events=[serialize_event(e) for e in events], server_time=get_server_time())
 
 # === Kindle Calendar Display Endpoints ===
 
@@ -151,8 +138,17 @@ TAB_X = [0, 200, 400, 600]  # 各 tab 左边界
 current_view = "day"
 calendar_active = False
 display_loop_running = False
+_stop_event = threading.Event()  # 用于可中断的 sleep
+_state_lock = threading.Lock()
 KINDLE_HOST = "192.168.10.72"
 KINDLE_KEY = "/home/openclaw/.ssh/kindle_key"
+
+
+def serialize_event(e: dict) -> dict:
+    """将 SQLite 返回的 INTEGER 布尔值转为 Python bool"""
+    e["is_countdown"] = bool(e["is_countdown"])
+    e["completed"] = bool(e["completed"])
+    return e
 
 
 def tb(font, text):
@@ -444,7 +440,7 @@ def read_touch_from_kindle() -> str:
             chunk = raw[i:i+16]
             if len(chunk) < 16:
                 break
-            _, _, ev_type, code, value = struct.unpack('ll HHh', chunk)
+            _, _, ev_type, code, value = struct.unpack('iiHHi', chunk)
             if ev_type == 3 and code == 57:  # ABS_MT_TRACKING_ID
                 if value == 0xffffffff:  # 抬起，保存当前 touch
                     if touch and "x" in touch and "y" in touch:
@@ -494,29 +490,42 @@ def display_loop():
     轮询间隔 60 秒（仅用于时钟更新），无触摸时不反复 STOP cvm
     """
     global current_view, display_loop_running
+    _stop_event.clear()
     logging.info(f"[display] loop starting, view={current_view}")
 
     png = render_frame(current_view)
     logging.info(f"[display] initial full refresh, frame_size={len(png)}")
-    push_frame_to_kindle(png)  # 启动时一次全屏 GC16
+    try:
+        push_frame_to_kindle(png)  # 启动时一次全屏 GC16
+    except subprocess.CalledProcessError as e:
+        logging.error(f"[display] initial push failed: {e}")
     logging.info("[display] initial push done")
 
     while display_loop_running:
         new_view = read_touch_from_kindle()  # STOP→读触摸→CONT
-        if new_view != current_view:
-            current_view = new_view
-            print(f"[display] switched to view: {current_view}")
-            png = render_frame(current_view)
-            push_frame_to_kindle(png)  # 全屏 GC16
-        else:
-            # 无视图切换，每 60 秒局部刷新时间（不 STOP cvm，保持时钟更新）
-            logging.info(f"[display] no switch, sleeping 60s, view={current_view}")
-            time.sleep(60)
-            logging.info(f"[display] waking, rendering frame...")
-            png = render_frame(current_view)
-            logging.info(f"[display] pushing partial frame, size={len(png)}")
-            push_frame_to_kindle_partial(png)  # 只 eips -g，不 STOP
-            logging.info(f"[display] partial push done")
+        with _state_lock:
+            if new_view != current_view:
+                current_view = new_view
+                print(f"[display] switched to view: {current_view}")
+                png = render_frame(current_view)
+                try:
+                    push_frame_to_kindle(png)  # 全屏 GC16
+                except subprocess.CalledProcessError as e:
+                    logging.error(f"[display] push failed: {e}")
+            else:
+                # 无视图切换，每 60 秒局部刷新时间（不 STOP cvm，保持时钟更新）
+                logging.info(f"[display] no switch, waiting 60s, view={current_view}")
+                _stop_event.wait(timeout=60)  # 可被 stop() 立即唤醒
+                if not display_loop_running:
+                    break
+                logging.info(f"[display] waking, rendering frame...")
+                png = render_frame(current_view)
+                logging.info(f"[display] pushing partial frame, size={len(png)}")
+                try:
+                    push_frame_to_kindle_partial(png)  # 只 eips -g，不 STOP
+                except subprocess.CalledProcessError as e:
+                    logging.error(f"[display] partial push failed: {e}")
+                logging.info(f"[display] partial push done")
 
 
 @app.post("/start")
@@ -535,6 +544,7 @@ def stop_calendar():
     global calendar_active, display_loop_running
     calendar_active = False
     display_loop_running = False
+    _stop_event.set()  # 立即唤醒 display_loop 的 wait()
     return {"status": "stopped", "active": calendar_active}
 
 
