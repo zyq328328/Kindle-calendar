@@ -259,8 +259,8 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
         # 日程 section（只看 schedule，深度扁平）
         y = 52
         draw.text((x + 3, y), "【日程】", font=font_section, fill=80)
-        y += 22
-        SCHED_H = 20
+        y += 30
+        SCHED_H = 22
         sched_raw = [(e, d) for e, d in events if e.get("type") == "schedule"]
         for ev, depth in sched_raw[:4]:
             indent = depth * 12
@@ -274,10 +274,10 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
             y += SCHED_H
 
         # 待办 section（只看 todo+habit）
-        y += 2
+        y += 4
         draw.text((x + 3, y), "【待办】", font=font_section, fill=80)
-        y += 22
-        TODO_H = 20
+        y += 30
+        TODO_H = 22
         todo_raw = [(e, d) for e, d in events if e.get("type") in ("todo", "habit")]
         if not todo_raw:
             draw.text((x + 3, y), "□ 暂无待办", font=font_small, fill=140)
@@ -364,12 +364,12 @@ def render_quadrant_view(draw, events, content_x):
             
             draw.rectangle([(x, y), (x + col_w - 2, y + row_h - 2)], fill=248)
             draw.text((x + 10, y + 10), label, font=font_title, fill=0)
-            
+
             quad_events = [e for e in todo_events
                          if e.get("importance") == importance
                          and e.get("urgency") == urgency]
-            
-            event_y = y + 40
+
+            event_y = y + 48
             for ev in quad_events[:4]:
                 title = ev.get("title", "")[:9]
                 draw.text((x + 10, event_y), "□", font=font_small, fill=80)
