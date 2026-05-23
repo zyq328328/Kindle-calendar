@@ -22,7 +22,7 @@ if os.path.exists(DIST_DIR):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -92,6 +92,12 @@ def remove_event(event_id: int):
 @app.post("/api/habits/{event_id}/checkin")
 def habit_checkin(event_id: int, date: str):
     """习惯打卡：更新 last_completed_date（用于标记某天已完成）"""
+    # 验证日期格式
+    try:
+        from datetime import datetime
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
     ev = get_event_by_id(event_id)
     if not ev:
         raise HTTPException(status_code=404, detail="Habit not found")
@@ -141,14 +147,16 @@ display_loop_running = False
 _stop_event = threading.Event()  # 用于可中断的 sleep
 _state_lock = threading.Lock()
 KINDLE_HOST = os.environ.get("KINDLE_HOST", "192.168.10.72")
-KINDLE_KEY = os.environ.get("KINDLE_KEY", "/home/openclaw/.ssh/kindle_key")
+KINDLE_KEY = os.environ.get("KINDLE_KEY", "C:/Users/Alex/Desktop/kindle_key")
 
 
 def serialize_event(e: dict) -> dict:
-    """将 SQLite 返回的 INTEGER 布尔值转为 Python bool"""
-    e["is_countdown"] = bool(e["is_countdown"])
-    e["completed"] = bool(e["completed"])
-    return e
+    """将 SQLite 返回的 INTEGER 布尔值转为 Python bool（不修改原 dict）"""
+    return {
+        **e,
+        "is_countdown": bool(e["is_countdown"]),
+        "completed": bool(e["completed"]),
+    }
 
 
 def tb(font, text):

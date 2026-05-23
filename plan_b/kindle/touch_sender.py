@@ -26,27 +26,58 @@ TRIGGER_Y_MIN = 700
 TRIGGER_Y_MAX = 800
 
 
+def _find_pids_by_name(name):
+    """
+    跨平台查找进程 PID
+    在 Linux 上使用 pgrep，在 Windows 上使用 tasklist
+    """
+    import shutil
+    # 检查是否有 pgrep
+    if shutil.which("pgrep"):
+        try:
+            result = subprocess.run(
+                ["pgrep", "-x", name],
+                capture_output=True, text=True
+            )
+            return result.stdout.strip().split()
+        except Exception:
+            pass
+    # Windows fallback: 使用 tasklist
+    if shutil.which("tasklist"):
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", f"IMAGENAME eq {name}.exe"],
+                capture_output=True, text=True
+            )
+            lines = result.stdout.strip().split("\n")
+            pids = []
+            for line in lines[3:]:  # 跳过前3行表头
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        pids.append(parts[1])
+                    except Exception:
+                        pass
+            return pids
+        except Exception:
+            pass
+    return []
+
+
 def unlock_touch_input():
     """
     SIGSTOP Xorg+awesome 解锁 event1
     """
     pids = []
     for name in ["Xorg", "awesome"]:
-        try:
-            result = subprocess.run(
-                ["pgrep", "-x", name],
-                capture_output=True, text=True
-            )
-            pids.extend(result.stdout.strip().split())
-        except Exception:
-            pass
+        pids.extend(_find_pids_by_name(name))
 
     for pid in pids:
         try:
             os.kill(int(pid), signal.SIGSTOP)
-            print(f"[touch_sender] SIGSTOP sent to {name} (PID {pid})")
+            print(f"[touch_sender] SIGSTOP sent to (PID {pid})")
         except Exception as e:
-            print(f"[touch_sender] Failed to SIGSTOP {name}: {e}")
+            print(f"[touch_sender] Failed to SIGSTOP {pid}: {e}")
 
     # 等待一小段时间确保事件被释放
     time.sleep(0.3)
@@ -58,21 +89,14 @@ def lock_touch_input():
     """
     pids = []
     for name in ["Xorg", "awesome"]:
-        try:
-            result = subprocess.run(
-                ["pgrep", "-x", name],
-                capture_output=True, text=True
-            )
-            pids.extend(result.stdout.strip().split())
-        except Exception:
-            pass
+        pids.extend(_find_pids_by_name(name))
 
     for pid in pids:
         try:
             os.kill(int(pid), signal.SIGCONT)
-            print(f"[touch_sender] SIGCONT sent to {name} (PID {pid})")
+            print(f"[touch_sender] SIGCONT sent to (PID {pid})")
         except Exception as e:
-            print(f"[touch_sender] Failed to SIGCONT {name}: {e}")
+            print(f"[touch_sender] Failed to SIGCONT {pid}: {e}")
 
 
 def read_touch_event():

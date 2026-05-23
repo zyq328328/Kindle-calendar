@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Kindle 本地 PIL 日历渲染器 - 竖版布局
-600x800 竖屏
-- 顶部导航栏：60px高，水平排列
-- 主内容区：全宽，y=60 起
+Kindle 本地 PIL 日历渲染器 - 新版左侧导航布局
+800x600 横版
+- 左侧导航栏：80px宽
+- 右侧主内容区：720px宽
 """
 import os, sys, json, datetime, urllib.request, functools
 from PIL import Image, ImageDraw, ImageFont
@@ -11,15 +11,22 @@ from PIL import Image, ImageDraw, ImageFont
 SERVER_URL = os.environ.get("SERVER_URL", "http://192.168.10.7:8082/api/events")
 
 # ========== 尺寸常量 ==========
-W, H = 600, 800
+W, H = 800, 600
 
-# 顶部导航栏
-NAV_H = 60
+# 左侧导航栏
+NAV_W = 80
 NAV_BG = 30       # 深灰黑背景
-NAV_FG = 200      # 亮灰文字
+NAV_FG = 220      # 亮灰文字
 NAV_ACTIVE = 0    # 选中项黑色
+NAV_DIVIDER = 60  # 导航项目分隔
 
-# 导航项（水平排列）
+# 主内容区
+MAIN_X = NAV_W
+MAIN_W = W - NAV_W  # 720
+
+TOP_H = 90        # 顶部日期区高度
+
+# 导航项
 NAV_ITEMS = [
     ("首", "home"),
     ("日", "day"),
@@ -30,12 +37,6 @@ NAV_ITEMS = [
     ("习", "habit"),
     ("设", "settings"),
 ]
-
-# 主内容区
-MAIN_Y = NAV_H
-MAIN_H = H - NAV_H  # 740
-
-TOP_H = 80        # 顶部日期区高度（各视图内）
 
 FONT_PATHS = [
     "/usr/java/lib/fonts/STHeitiMedium.ttf",
@@ -92,44 +93,44 @@ def fetch_events(date_str=None):
         return []
 
 
-# ========== 渲染：顶部导航栏 ==========
+# ========== 渲染：左侧导航栏 ==========
 
-def render_nav_topbar(draw, active_view):
-    """渲染顶部导航栏（水平排列）"""
-    draw.rectangle([(0, 0), (W - 1, NAV_H - 1)], fill=NAV_BG)
+def render_nav_sidebar(draw, active_view):
+    """渲染左侧导航栏"""
+    draw.rectangle([(0, 0), (NAV_W - 1, H)], fill=NAV_BG)
 
-    n = len(NAV_ITEMS)
-    item_w = W // n  # 每个导航项宽度（约75px）
-    now = datetime.datetime.now()
-
+    item_h = 52
+    start_y = 10
     for i, (label, view) in enumerate(NAV_ITEMS):
-        x = i * item_w
+        y = start_y + i * item_h
+        if view == "home":
+            # 顶部标题
+            draw.rectangle([(4, 4), (NAV_W - 4, 36)], fill=60)
+            draw.text((14, 8), "历", font=make_font(20), fill=255)
+            continue
+
         is_active = (view == active_view)
+        bg = 60 if is_active else NAV_BG
+        draw.rectangle([(4, y + 2), (NAV_W - 4, y + item_h - 2)], fill=bg)
 
+        # 圆点指示
+        dot_x = 10
+        dot_y = y + item_h // 2 - 3
         if is_active:
-            draw.rectangle([(x + 2, 2), (x + item_w - 2, NAV_H - 2)], fill=60)
-            # 顶部高亮线
-            draw.line([(x + 2, 0), (x + item_w - 2, 0)], fill=120, width=3)
+            draw.ellipse([(dot_x, dot_y), (dot_x + 6, dot_y + 6)], fill=255)
 
-        # 圆点
-        cx = x + item_w // 2
-        cy = NAV_H // 2 - 6
-        if is_active:
-            draw.ellipse([(cx - 3, cy), (cx + 3, cy + 6)], fill=255)
+        draw.text((22, y + 14), label, font=make_font(18), fill=NAV_FG if not is_active else 255)
 
-        draw.text((x + 4, NAV_H - 28), label, font=make_font(16), fill=NAV_FG if not is_active else 255)
-
-    # 右侧时间
-    draw.text((W - 56, NAV_H - 28), now.strftime("%H:%M"), font=make_font(14), fill=100)
+    # 底部时间
+    now = datetime.datetime.now()
+    draw.text((8, H - 40), now.strftime("%H:%M"), font=make_font(16), fill=100)
 
 
 def touch_to_view(x, y):
     """触摸坐标 → 视图名"""
-    if y < NAV_H and y >= 0:
-        n = len(NAV_ITEMS)
-        item_w = W // n
-        idx = x // item_w
-        idx = max(0, min(idx, n - 1))
+    if x < NAV_W and y >= 10:
+        idx = (y - 10) // 52
+        idx = max(0, min(idx, len(NAV_ITEMS) - 1))
         return NAV_ITEMS[idx][1]
     return None  # 主内容区触摸不切换视图
 
@@ -138,46 +139,49 @@ def touch_to_view(x, y):
 
 def render_home_view(draw, events):
     """首页：当前日期 + 今日概览"""
-    font_title = make_font(52)
+    font_title = make_font(40)
     font_medium = make_font(22)
     font_small = make_font(18)
     now = datetime.datetime.now()
     today_str = now.strftime("%Y-%m-%d")
     wd = ["一","二","三","四","五","六","日"][now.weekday()]
 
-    # 左侧大日期
-    draw.text((20, 10), str(now.day), font=font_title, fill=0)
-    draw.text((20, 65), now.strftime("%m月"), font=font_medium, fill=80)
-    draw.text((20, 92), f"周{wd}", font=font_small, fill=100)
+    # 日期大字
+    day_str = str(now.day)
+    draw.text((MAIN_X + 20, 10), day_str, font=font_title, fill=0)
+    draw.text((MAIN_X + 20, 55), now.strftime("%m月"), font=font_medium, fill=80)
+    draw.text((MAIN_X + 20, 80), f"周{wd}", font=font_small, fill=100)
 
     # 分隔线
-    draw.line([(130, 10), (130, TOP_H - 10)], fill=200, width=1)
+    draw.line([(MAIN_X + 120, 10), (MAIN_X + 120, TOP_H - 10)], fill=200, width=1)
 
     # 右侧统计
     today_evs = [e for e in events if e.get("date", "").startswith(today_str)]
     pending = [e for e in events if not e.get("completed")]
     urgent = [e for e in events
               if e.get("importance") == "important" and e.get("urgency") == "urgent" and not e.get("completed")]
-    draw.text((140, 15), f"今日 {len(today_evs)}", font=font_small, fill=80)
-    draw.text((140, 40), f"待办 {len(pending)}", font=font_small, fill=80)
-    draw.text((140, 65), f"紧急 {len(urgent)}", font=font_small, fill=0)
+    draw.text((MAIN_X + 130, 15), f"今日 {len(today_evs)}", font=font_small, fill=80)
+    draw.text((MAIN_X + 130, 40), f"待办 {len(pending)}", font=font_small, fill=80)
+    draw.text((MAIN_X + 130, 65), f"紧急 {len(urgent)}", font=font_small, fill=0)
 
     # 分割线
-    draw.line([(10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
+    draw.line([(MAIN_X + 10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
 
     # 今日日程列表
     y = TOP_H + 10
     if not today_evs:
-        draw.text((20, y + 20), "(今日无日程)", font=font_small, fill=180)
+        draw.text((MAIN_X + 20, y + 20), "(今日无日程)", font=font_small, fill=180)
     else:
         for ev in today_evs[:10]:
             time_str = ev.get("time", "") or ""
             title = ev.get("title", "")[:16]
             color = get_priority_color(ev)
-            draw.rectangle([(10, y + 2), (14, y + 26)], fill=color)
+
+            # 左侧色条
+            draw.rectangle([(MAIN_X + 10, y + 2), (MAIN_X + 14, y + 26)], fill=color)
             text = f"{time_str} {title}" if time_str else f"    {title}"
             fill = 180 if ev.get("completed") else 0
-            draw.text((22, y + 3), text, font=font_small, fill=fill)
+            draw.text((MAIN_X + 22, y + 3), text, font=font_small, fill=fill)
             y += 30
 
 
@@ -185,41 +189,42 @@ def render_home_view(draw, events):
 
 def render_day_view(draw, date_str, events):
     """日视图：大日期 + 今日日程"""
-    font_title = make_font(56)
+    font_title = make_font(52)
     font_medium = make_font(22)
     font_small = make_font(18)
     d = datetime.date.fromisoformat(date_str)
     wd = ["一","二","三","四","五","六","日"][d.weekday()]
 
-    # 左侧日期
-    draw.text((20, 10), str(d.day), font=font_title, fill=0)
-    draw.text((20, 70), d.strftime("%m月"), font=font_medium, fill=80)
-    draw.text((20, 96), f"周{wd}", font=font_small, fill=100)
+    # 左上角日期
+    draw.text((MAIN_X + 20, 10), str(d.day), font=font_title, fill=0)
+    draw.text((MAIN_X + 20, 65), d.strftime("%m月"), font=font_medium, fill=80)
+    draw.text((MAIN_X + 20, 90), f"周{wd}", font=font_small, fill=100)
 
     # 分隔线
-    draw.line([(130, 10), (130, TOP_H - 10)], fill=200, width=1)
+    draw.line([(MAIN_X + 130, 10), (MAIN_X + 130, TOP_H - 10)], fill=200, width=1)
 
-    # 统计
-    draw.text((140, 15), f"{len(events)} 项日程", font=font_small, fill=80)
+    # 今日日程数量统计
+    draw.text((MAIN_X + 140, 15), f"{len(events)} 项日程", font=font_small, fill=80)
     pending = [e for e in events if not e.get("completed")]
-    draw.text((140, 40), f"未完成 {len(pending)}", font=font_small, fill=0)
+    draw.text((MAIN_X + 140, 40), f"未完成 {len(pending)}", font=font_small, fill=0)
 
     # 分割线
-    draw.line([(10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
+    draw.line([(MAIN_X + 10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
 
     # 日程列表
     y = TOP_H + 10
     if not events:
-        draw.text((20, y + 20), "(今日无日程)", font=font_small, fill=180)
+        draw.text((MAIN_X + 20, y + 20), "(今日无日程)", font=font_small, fill=180)
     else:
         for ev in events[:12]:
             time_str = ev.get("time", "") or ""
             title = ev.get("title", "")[:16]
             color = get_priority_color(ev)
-            draw.rectangle([(10, y + 2), (14, y + 26)], fill=color)
+
+            draw.rectangle([(MAIN_X + 10, y + 2), (MAIN_X + 14, y + 26)], fill=color)
             text = f"{time_str} {title}" if time_str else f"    {title}"
             fill = 180 if ev.get("completed") else 0
-            draw.text((22, y + 3), text, font=font_small, fill=fill)
+            draw.text((MAIN_X + 22, y + 3), text, font=font_small, fill=fill)
             y += 30
 
 
@@ -242,43 +247,42 @@ def render_three_day_view(draw, date_str, events_by_date):
     now = datetime.datetime.now()
     center = datetime.date.fromisoformat(date_str)
 
-    col_count = 3
-    col_w = (W - 20) // col_count
+    col_w = (MAIN_W - 20) // 3
     labels = ["昨天", "今天", "明天"]
     offsets = [-1, 0, 1]
 
-    # 顶部月份
-    draw.text((20, 8), center.strftime("%Y年 %m月"), font=font_tiny, fill=120)
-    draw.line([(10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
+    # 顶部月份小字
+    draw.text((MAIN_X + 20, 8), center.strftime("%Y年 %m月"), font=font_tiny, fill=120)
+    draw.line([(MAIN_X + 10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
 
     for ci, (offset, label) in enumerate(zip(offsets, labels)):
         d = center + datetime.timedelta(days=offset)
         date_key = d.isoformat()
         events = events_by_date.get(date_key, [])
-        x = 10 + ci * col_w
+        x = MAIN_X + 10 + ci * col_w
         is_today = offset == 0
 
         # 日期头背景
         bg = 230 if is_today else 245
-        draw.rectangle([(x, TOP_H + 5), (x + col_w - 8, TOP_H + 55)], fill=bg)
+        draw.rectangle([(x, TOP_H + 5), (x + col_w - 10, TOP_H + 55)], fill=bg)
 
         # 日期数字
         day_color = 0 if is_today else 60
-        draw.text((x + 8, TOP_H + 8), str(d.day), font=font_large, fill=day_color)
+        draw.text((x + 10, TOP_H + 8), str(d.day), font=font_large, fill=day_color)
 
         # 星期+日期
         wd = ["一","二","三","四","五","六","日"][d.weekday()]
         sub = f"周{wd} {d.month}/{d.day}"
-        draw.text((x + 8, TOP_H + 38), sub, font=font_tiny, fill=100)
+        draw.text((x + 10, TOP_H + 38), sub, font=font_tiny, fill=100)
 
         # 列分隔线
         if ci < 2:
-            draw.line([(x + col_w - 4, TOP_H + 5), (x + col_w - 4, H - 10)], fill=200, width=1)
+            draw.line([(x + col_w - 5, TOP_H + 5), (x + col_w - 5, H - 10)], fill=200, width=1)
 
         # 日程
         y = TOP_H + 62
         if not events:
-            draw.text((x + 8, y + 5), "-", font=font_tiny, fill=180)
+            draw.text((x + 10, y + 5), "-", font=font_tiny, fill=180)
             y += 22
         else:
             for ev in events[:10]:
@@ -287,6 +291,7 @@ def render_three_day_view(draw, date_str, events_by_date):
                 completed = ev.get("completed", False)
                 color = get_priority_color(ev)
 
+                # 优先级色条
                 draw.rectangle([(x + 4, y + 2), (x + 8, y + 20)], fill=color)
 
                 if time_str:
@@ -304,9 +309,10 @@ def render_list_view(draw, events):
     font_medium = make_font(20)
     font_small = make_font(16)
 
-    draw.text((20, 10), "任务清单", font=font_medium, fill=0)
-    draw.line([(10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
+    draw.text((MAIN_X + 20, 10), "任务清单", font=font_medium, fill=0)
+    draw.line([(MAIN_X + 10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
 
+    # 分组
     pending = [e for e in events if not e.get("completed")]
     done = [e for e in events if e.get("completed")]
 
@@ -317,25 +323,27 @@ def render_list_view(draw, events):
         title = ev.get("title", "")[:18]
         color = get_priority_color(ev)
 
-        draw.rectangle([(10, y + 2), (24, y + 16)], outline=100, width=1)
+        # checkbox方框
+        draw.rectangle([(MAIN_X + 10, y + 2), (MAIN_X + 24, y + 16)], outline=100, width=1)
+        # 时间+标题
         prefix = f"{time_str} " if time_str else "      "
-        draw.text((30, y + 1), prefix + title, font=font_small, fill=0)
-        draw.rectangle([(10, y + 2), (12, y + 16)], fill=color)
+        draw.text((MAIN_X + 30, y + 1), prefix + title, font=font_small, fill=0)
+        draw.rectangle([(MAIN_X + 10, y + 2), (MAIN_X + 12, y + 16)], fill=color)  # 优先级色条
         y += 26
 
     if not pending:
-        draw.text((20, y + 10), "(无待办)", font=font_small, fill=180)
+        draw.text((MAIN_X + 20, y + 10), "(无待办)", font=font_small, fill=180)
         y += 32
 
     # 已完成区
     if done:
         y += 8
-        draw.line([(10, y), (W - 10, y)], fill=200, width=1)
-        draw.text((20, y + 6), f"已完成 ({len(done)})", font=font_small, fill=120)
+        draw.line([(MAIN_X + 10, y), (W - 10, y)], fill=200, width=1)
+        draw.text((MAIN_X + 20, y + 6), f"已完成 ({len(done)})", font=font_small, fill=120)
         y += 28
         for ev in done[:8]:
             title = ev.get("title", "")[:18]
-            draw.text((30, y + 1), title, font=font_small, fill=180)
+            draw.text((MAIN_X + 30, y + 1), title, font=font_small, fill=180)
             y += 24
 
 
@@ -346,19 +354,20 @@ def render_quadrant_view(draw, events):
     font_medium = make_font(18)
     font_small = make_font(15)
 
-    draw.text((20, 10), "四象限", font=font_medium, fill=0)
-    draw.line([(10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
+    draw.text((MAIN_X + 20, 10), "四象限", font=font_medium, fill=0)
+    draw.line([(MAIN_X + 10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
 
     todos = [e for e in events if e.get("type") in ("todo", "schedule") and not e.get("completed")]
 
-    q1 = [e for e in todos if e.get("importance") == "important" and e.get("urgency") == "urgent"]
-    q2 = [e for e in todos if e.get("importance") == "important" and e.get("urgency") == "not_urgent"]
-    q3 = [e for e in todos if e.get("importance") == "not_important" and e.get("urgency") == "urgent"]
-    q4 = [e for e in todos if e.get("importance") == "not_important" and e.get("urgency") == "not_urgent"]
+    # 四象限：importance × urgency
+    q1 = [e for e in todos if e.get("importance") == "important" and e.get("urgency") == "urgent"]          # 重要+紧急
+    q2 = [e for e in todos if e.get("importance") == "important" and e.get("urgency") == "not_urgent"]     # 重要+非紧急
+    q3 = [e for e in todos if e.get("importance") == "not_important" and e.get("urgency") == "urgent"]      # 非重要+紧急
+    q4 = [e for e in todos if e.get("importance") == "not_important" and e.get("urgency") == "not_urgent"]  # 非重要+非紧急
 
-    margin = 10
+    margin = MAIN_X + 10
     gap = 8
-    usable_w = W - margin * 2
+    usable_w = W - margin - 10
     usable_h = H - TOP_H - 15
     half_w = (usable_w - gap) // 2
     half_h = (usable_h - gap) // 2
@@ -371,11 +380,15 @@ def render_quadrant_view(draw, events):
     ]
 
     for items, label, qi, qx, qy, qw, qh, hdr_color in quadrants:
+        # 背景
         draw.rectangle([(qx, qy), (qx + qw, qy + qh)], fill=255)
+        # 标题栏
         draw.rectangle([(qx, qy), (qx + qw, qy + 24)], fill=230)
         draw.text((qx + 6, qy + 4), label, font=font_small, fill=0)
+        # 象限编号
         draw.text((qx + qw - 18, qy + 4), f"Q{qi}", font=font_small, fill=120)
 
+        # 列表
         y = qy + 30
         if not items:
             try:
@@ -394,6 +407,7 @@ def render_quadrant_view(draw, events):
                     draw.text((qx + qw - tw - 6, y + 1), time_str, font=font_small, fill=120)
                 y += 20
 
+    # 中心十字分隔线
     mid_x = margin + half_w + gap // 2
     mid_y = TOP_H + 10 + half_h
     draw.line([(mid_x, TOP_H + 10), (mid_x, H - 10)], fill=160, width=1)
@@ -410,32 +424,39 @@ def render_habit_view(draw, events):
     font_tiny = make_font(14)
 
     now = datetime.datetime.now()
-    draw.text((20, 10), "习惯打卡", font=font_medium, fill=0)
-    draw.text((140, 14), now.strftime("%m/%d"), font=font_small, fill=100)
-    draw.line([(10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
+    draw.text((MAIN_X + 20, 10), "习惯打卡", font=font_medium, fill=0)
+    draw.text((MAIN_X + 140, 14), now.strftime("%m/%d"), font=font_small, fill=100)
+    draw.line([(MAIN_X + 10, TOP_H), (W - 10, TOP_H)], fill=200, width=1)
 
     habits = [e for e in events if e.get("type") == "habit"]
+    today_str = now.strftime("%Y-%m-%d")
 
     y = TOP_H + 12
     if not habits:
-        draw.text((20, y + 30), "(暂无习惯)", font=font_small, fill=180)
+        draw.text((MAIN_X + 20, y + 30), "(暂无习惯)", font=font_small, fill=180)
     else:
         for ev in habits:
             title = ev.get("title", "")[:20]
             completed = ev.get("completed", False)
             ev_date = ev.get("date", "")
 
-            draw.rectangle([(10, y), (W - 10, y + 38)], outline=220, width=1)
-            draw.rectangle([(18, y + 9), (34, y + 25)], outline=100, width=1)
+            # 行背景
+            draw.rectangle([(MAIN_X + 10, y), (W - 10, y + 38)], outline=220, width=1)
+
+            # checkbox
+            draw.rectangle([(MAIN_X + 18, y + 9), (MAIN_X + 34, y + 25)], outline=100, width=1)
             if completed:
-                draw.text((21, y + 9), "V", font=font_small, fill=0)
+                draw.text((MAIN_X + 21, y + 9), "V", font=font_small, fill=0)
                 fill = 180
             else:
                 fill = 0
 
-            draw.text((42, y + 10), title, font=font_small, fill=fill)
+            # 标题
+            draw.text((MAIN_X + 42, y + 10), title, font=font_small, fill=fill)
+
+            # 日期
             if ev_date:
-                draw.text((W - 80, y + 10), ev_date[5:], font=font_tiny, fill=120)
+                draw.text((MAIN_X + MAIN_W - 80, y + 10), ev_date[5:], font=font_tiny, fill=120)
 
             y += 44
             if y > H - 30:
@@ -448,8 +469,8 @@ def render_frame(view, date_str, events, out_path="/tmp/calendar_frame.png"):
     img = Image.new("L", (W, H), 255)
     draw = ImageDraw.Draw(img)
 
-    # 渲染顶部导航
-    render_nav_topbar(draw, view)
+    # 渲染左侧导航
+    render_nav_sidebar(draw, view)
 
     # 渲染主内容区
     if view == "home":

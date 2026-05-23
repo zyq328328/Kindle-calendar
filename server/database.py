@@ -200,6 +200,7 @@ def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]
     if rule == "none":
         return [habit]
 
+    import calendar
     from datetime import datetime, timedelta
 
     start = datetime.strptime(start_date, "%Y-%m-%d")
@@ -216,6 +217,9 @@ def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]
         occ["date"] = current.strftime("%Y-%m-%d")
         last_done = habit.get("last_completed_date")
         occ["completed"] = bool(last_done and last_done == current.strftime("%Y-%m-%d"))
+        # SQLite stores booleans as integers, ensure proper bool conversion
+        occ["is_countdown"] = bool(occ.get("is_countdown"))
+        occ["completed"] = bool(occ.get("completed"))
         occurrences.append(occ)
         # 推进到下一个周期
         if rule == "daily":
@@ -227,12 +231,16 @@ def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]
         elif rule == "weekly":
             current += timedelta(weeks=1)
         elif rule == "monthly":
-            month = current.month + 1
+            # 使用 calendar 模块正确计算下个月的日期
+            month = current.month
             year = current.year
+            month += 1
             if month > 12:
                 month = 1
                 year += 1
-            day = min(current.day, [31,29,31,30,31,30,31,31,30,31,30,31][month-1])
+            # 获取目标月份的最大天数，避免硬编码列表
+            max_day = calendar.monthrange(year, month)[1]
+            day = min(current.day, max_day)
             current = datetime(year, month, day)
 
     return occurrences
