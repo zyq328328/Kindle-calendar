@@ -124,8 +124,8 @@
             </select>
           </div>
         </div>
-        <!-- 习惯重复周期 -->
-        <div class="form-row" v-if="form.type === 'habit'">
+        <!-- 重复周期（支持日程/待办/习惯） -->
+        <div class="form-row" v-if="form.type === 'schedule' || form.type === 'todo' || form.type === 'habit'">
           <div class="form-group">
             <label>重复周期</label>
             <select v-model="form.recurrence_rule">
@@ -136,13 +136,11 @@
               <option value="monthly">每月</option>
             </select>
           </div>
-          <div class="form-group">
+          <div class="form-group" v-if="form.recurrence_rule !== 'none'">
             <label>开始日期</label>
             <input v-model="form.start_date" type="date" />
           </div>
-        </div>
-        <div class="form-row" v-if="form.type === 'habit'">
-          <div class="form-group">
+          <div class="form-group" v-if="form.recurrence_rule !== 'none'">
             <label>结束日期</label>
             <input v-model="form.end_date" type="date" placeholder="留空表示无限重复" />
           </div>
