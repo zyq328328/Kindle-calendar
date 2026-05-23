@@ -252,7 +252,7 @@ def get_events_in_range(start_date: str, end_date: str) -> list[dict]:
     result = []
 
     for ev in all_events:
-        if ev.get("type") == "habit" and ev.get("recurrence_rule", "none") != "none":
+        if ev.get("recurrence_rule", "none") != "none":
             result.extend(expand_recurrence(ev, start_date, end_date))
         else:
             # 过滤不在范围内的普通事件
