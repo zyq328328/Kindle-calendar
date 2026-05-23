@@ -279,7 +279,7 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
         y += 30
         SCHED_H = 22
         sched_raw = [(e, d) for e, d in events if e.get("type") == "schedule"]
-        for ev, depth in sched_raw[:4]:
+        for ev, depth in sched_raw:
             indent = depth * 12
             time_str = ev.get("time", "")[:5]
             title = ev.get("title", "")[:10]
@@ -299,7 +299,7 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
         if not todo_raw:
             draw.text((x + 3, y), "□ 暂无待办", font=font_small, fill=140)
         else:
-            for ev, depth in todo_raw[:4]:
+            for ev, depth in todo_raw:
                 indent = depth * 12
                 title = ev.get("title", "")[:11]
                 draw.text((x + 3 + indent, y), "□", font=font_small, fill=80)
@@ -341,7 +341,7 @@ def render_todo_view(draw, events, content_x):
         draw.text((content_x + 20, y), "暂无待办", font=font_small, fill=100)
         return
     
-    for ev, depth in ev_list[:10]:
+    for ev, depth in ev_list:
         indent = depth * 20
         title = ev.get("title", "")[:16]
         completed = ev.get("completed", False)
