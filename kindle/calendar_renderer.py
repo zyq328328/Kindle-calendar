@@ -366,12 +366,12 @@ def render_quadrant_view(draw, events, content_x):
     col_w = content_w // 2
     row_h = H // 2
     
-    # Filter: only todo and habit (support both flat and tree format)
+    # Filter: only todo and habit (support both flat and tree format), keep depth
     if events and isinstance(events[0], tuple):
-        todo_events = [e for e, _ in events if e.get("type") in ("todo", "habit")]
+        todo_events = [(e, depth) for e, depth in events if e.get("type") in ("todo", "habit")]
     else:
-        todo_events = [e for e in events if e.get("type") in ("todo", "habit")]
-    
+        todo_events = [(e, 0) for e in events if e.get("type") in ("todo", "habit")]
+
     # Draw quadrant separators
     mid_x = content_x + col_w
     mid_y = row_h
@@ -386,18 +386,19 @@ def render_quadrant_view(draw, events, content_x):
             label, importance, urgency = QUADRANT_LABELS[idx]
             x = content_x + col * col_w
             y = row * row_h
-            
+
             draw.text((x + 10, y + 10), label, font=font_title, fill=0)
 
-            quad_events = [e for e in todo_events
+            quad_events = [(e, depth) for e, depth in todo_events
                          if e.get("importance") == importance
                          and e.get("urgency") == urgency]
 
             event_y = y + 48
-            for ev in quad_events:
+            for ev, depth in quad_events:
+                indent = depth * 12
                 title = ev.get("title", "")[:14]
-                draw.text((x + 10, event_y), "□", font=font_small, fill=80)
-                draw.text((x + 22, event_y), title, font=font_small, fill=0)
+                draw.text((x + 10 + indent, event_y), "□", font=font_small, fill=80)
+                draw.text((x + 22 + indent, event_y), title, font=font_small, fill=0)
                 event_y += 24
 
 def render_settings_view(draw, content_x):
