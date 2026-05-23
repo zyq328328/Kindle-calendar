@@ -67,16 +67,28 @@ def tb(font_size, text):
             width += font_size * 0.6
     return width
 
+def flatten_tree(tree, depth=0):
+    """将事件树展平为 (event, depth) 列表，用于带缩进的渲染"""
+    result = []
+    for ev in tree:
+        result.append((ev, depth))
+        if ev.get("children"):
+            result.extend(flatten_tree(ev["children"], depth + 1))
+    return result
+
+
 def fetch_events(date_str=None, max_retries=3):
-    """Fetch events with retry mechanism"""
+    """Fetch events (tree) with retry mechanism"""
+    TREE_URL = SERVER_URL.replace("/api/events", "/api/events/tree")
     for attempt in range(max_retries):
         try:
-            req = urllib.request.Request(SERVER_URL)
+            req = urllib.request.Request(TREE_URL)
             with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read().decode())
+                tree = json.loads(resp.read().decode())
+                flat = flatten_tree(tree)
                 if date_str:
-                    return [e for e in data if e.get("date", "").startswith(date_str)]
-                return data
+                    return [(ev, depth) for ev, depth in flat if ev.get("date", "").startswith(date_str)]
+                return flat
         except Exception as e:
             print(f"[renderer] fetch attempt {attempt+1} failed: {e}")
             if attempt < max_retries - 1:
@@ -156,24 +168,27 @@ def render_day_or_home_view(draw, date_str, events, content_x, is_home=False):
         draw.text((content_x + 20, y), f"{d.month}月{d.day}日 {wd}", font=font_title, fill=0)
     y += 45
     
-    day_events = [e for e in events if e.get("date") == date_str]
-    schedules = [e for e in day_events if e.get("type") == "schedule"]
-    todos = [e for e in day_events if e.get("type") in ("todo", "habit")]
+    day_events_raw = [(e, d) for e, d in events if e.get("date") == date_str]
+    schedules_raw = [(e, d) for e, d in day_events_raw if e.get("type") == "schedule"]
+    todos_raw = [(e, d) for e, d in day_events_raw if e.get("type") in ("todo", "habit")]
     
     # 日程 section
     draw.text((content_x + 20, y), "【日程】", font=font_section, fill=0)
     y += 30
     
-    if not schedules:
+    if not schedules_raw:
         draw.text((content_x + 30, y), "暂无日程", font=font_small, fill=150)
         y += 25
     else:
-        for ev in schedules[:5]:
+        for ev, depth in schedules_raw[:5]:
+            indent = depth * 20
             time_str = ev.get("time", "")[:5]
             title = ev.get("title", "")[:14]
             if time_str:
-                draw.text((content_x + 30, y), time_str, font=font_small, fill=80)
-            draw.text((content_x + 85, y), title, font=font_small, fill=0)
+                draw.text((content_x + 30 + indent, y), time_str, font=font_small, fill=80)
+                draw.text((content_x + 85 + indent, y), title, font=font_small, fill=0)
+            else:
+                draw.text((content_x + 30 + indent, y), title, font=font_small, fill=0)
             y += 25
     
     y += 10
@@ -182,13 +197,14 @@ def render_day_or_home_view(draw, date_str, events, content_x, is_home=False):
     draw.text((content_x + 20, y), "【待办】", font=font_section, fill=0)
     y += 30
     
-    if not todos:
+    if not todos_raw:
         draw.text((content_x + 30, y), "暂无待办", font=font_small, fill=150)
     else:
-        for ev in todos[:6]:
+        for ev, depth in todos_raw[:6]:
+            indent = depth * 20
             title = ev.get("title", "")[:16]
-            draw.text((content_x + 30, y), "□", font=font_small, fill=80)
-            draw.text((content_x + 50, y), title, font=font_small, fill=0)
+            draw.text((content_x + 30 + indent, y), "□", font=font_small, fill=80)
+            draw.text((content_x + 50 + indent, y), title, font=font_small, fill=0)
             y += 25
 
 def render_home_view(draw, events, content_x):
@@ -200,12 +216,16 @@ def render_day_view(draw, date_str, events, content_x):
     render_day_or_home_view(draw, date_str, events, content_x, is_home=False)
 
 def group_events_by_date(events, center_date):
-    """Group events by date from already fetched list"""
+    """Group events by date from already fetched list (supports both flat and tree format)"""
     result = {}
     for offset in [-1, 0, 1]:
         d = center_date + datetime.timedelta(days=offset)
         date_key = d.isoformat()
-        result[date_key] = [e for e in events if e.get("date", "").startswith(date_key)]
+        # events can be [(event, depth), ...] or [event, ...]
+        if events and isinstance(events[0], tuple):
+            result[date_key] = [(e, depth) for e, depth in events if e.get("date", "").startswith(date_key)]
+        else:
+            result[date_key] = [e for e in events if e.get("date", "").startswith(date_key)]
     return result
 
 def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, content_w=None):
@@ -237,12 +257,17 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
         
         # Events
         y = 52
-        for ev in events[:5]:
+        ev_list = events[:5]
+        for item in ev_list:
+            ev, depth = (item if isinstance(item, tuple) else (item, 0))
+            indent = depth * 15
             time_str = ev.get("time", "")[:5]
             title = ev.get("title", "")[:12]
             if time_str:
-                draw.text((x + 5, y), time_str, font=font_small, fill=80)
-            draw.text((x + 55, y), title, font=font_small, fill=0)
+                draw.text((x + 5 + indent, y), time_str, font=font_small, fill=80)
+                draw.text((x + 55 + indent, y), title, font=font_small, fill=0)
+            else:
+                draw.text((x + 5 + indent, y), title, font=font_small, fill=0)
             y += 30
         
         # Column separator
@@ -261,18 +286,31 @@ def render_todo_view(draw, events, content_x):
     draw.text((content_x + 20, y), "待办列表", font=font_title, fill=0)
     y += 40
     
-    todos = [e for e in events if e.get("type") == "todo" or e.get("type") == "habit"]
-    todos = sorted(todos, key=lambda x: (x.get("importance") == "important", x.get("urgency") == "urgent"))
+    # Support both flat [event] and tree [(event, depth)]
+    raw = events
+    if raw and isinstance(raw[0], tuple):
+        ev_list = [(e, depth) for e, depth in raw if e.get("type") in ("todo", "habit")]
+    else:
+        ev_list = [(e, 0) for e in raw if e.get("type") in ("todo", "habit")]
     
-    if not todos:
+    def sort_key(item):
+        ev, depth = item
+        imp = 0 if ev.get("importance") == "important" else 1
+        urg = 0 if ev.get("urgency") == "urgent" else 1
+        return (imp, urg)
+    
+    ev_list.sort(key=sort_key)
+    
+    if not ev_list:
         draw.text((content_x + 20, y), "暂无待办", font=font_small, fill=100)
         return
     
-    for ev in todos[:10]:
+    for ev, depth in ev_list[:10]:
+        indent = depth * 20
         title = ev.get("title", "")[:18]
         completed = ev.get("completed", False)
         fill_color = 150 if completed else 0
-        draw.text((content_x + 20, y), title, font=font_small, fill=fill_color)
+        draw.text((content_x + 20 + indent, y), title, font=font_small, fill=fill_color)
         y += 28
 
 QUADRANT_LABELS = [
@@ -291,8 +329,11 @@ def render_quadrant_view(draw, events, content_x):
     col_w = content_w // 2
     row_h = H // 2
     
-    # Filter: only todo and habit
-    todo_events = [e for e in events if e.get("type") in ("todo", "habit")]
+    # Filter: only todo and habit (support both flat and tree format)
+    if events and isinstance(events[0], tuple):
+        todo_events = [e for e, _ in events if e.get("type") in ("todo", "habit")]
+    else:
+        todo_events = [e for e in events if e.get("type") in ("todo", "habit")]
     
     for row in range(2):
         for col in range(2):
