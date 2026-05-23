@@ -372,6 +372,14 @@ def render_quadrant_view(draw, events, content_x):
     else:
         todo_events = [e for e in events if e.get("type") in ("todo", "habit")]
     
+    # Draw quadrant separators
+    mid_x = content_x + col_w
+    mid_y = row_h
+    # Horizontal line (separates top/bottom rows)
+    draw.line([(content_x, mid_y), (content_x + content_w, mid_y)], fill=100, width=2)
+    # Vertical line (separates left/right columns)
+    draw.line([(mid_x, 0), (mid_x, H)], fill=100, width=2)
+
     for row in range(2):
         for col in range(2):
             idx = row * 2 + col
@@ -387,7 +395,7 @@ def render_quadrant_view(draw, events, content_x):
                          and e.get("urgency") == urgency]
 
             event_y = y + 48
-            for ev in quad_events[:4]:
+            for ev in quad_events:
                 title = ev.get("title", "")[:9]
                 draw.text((x + 10, event_y), "□", font=font_small, fill=80)
                 draw.text((x + 22, event_y), title, font=font_small, fill=0)
