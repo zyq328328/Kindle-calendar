@@ -128,8 +128,13 @@ def get_children(parent_id: int) -> list[dict]:
         return [dict(row) for row in rows]
 
 def get_event_tree() -> list[dict]:
-    """获取扁平化的事件列表，每个事件带 children 字段（含子任务）"""
-    all_events = get_all_events()
+    """获取扁平化的事件列表，每个事件带 children 字段（含子任务），重复事件自动展开"""
+    import datetime
+    today = datetime.date.today()
+    start = (today - datetime.timedelta(days=90)).isoformat()
+    end = (today + datetime.timedelta(days=270)).isoformat()
+    # 用 get_events_in_range 展开重复规则
+    all_events = get_events_in_range(start, end)
     # 构建 parent_id -> children 映射
     children_map = {}
     for ev in all_events:
