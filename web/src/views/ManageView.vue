@@ -276,6 +276,10 @@ function openAdd() {
 function openEdit(ev) {
   editing.value = ev
   form.value = { ...ev }
+  // 如果 start_date 为空但 date 有值，默认用 date 填充
+  if (!form.value.start_date && form.value.date) {
+    form.value.start_date = form.value.date
+  }
   showModal.value = true
 }
 
