@@ -16,7 +16,7 @@ Kindle 7 电子墨水屏智能日历，支持多视图切换、习惯打卡和 W
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Kindle 7 (192.168.10.72)                                  │
+│  Kindle 7                                   │
 │  ┌─────────────┐    render + display    ┌──────────────┐  │
 │  │ plan_a_main │ ─── PIL 渲染图 ────→  │ eips /dev/fb0 │  │
 │  │  (KOReader)  │ ←── 触摸事件 ───────  │  (电子墨水屏) │  │
@@ -26,7 +26,7 @@ Kindle 7 电子墨水屏智能日历，支持多视图切换、习惯打卡和 W
           │  HTTP (port 8082)
           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Server (192.168.188.7)                                  │
+│  Server                                     │
 │  ┌──────────────┐    SQLite     ┌──────────────────────┐   │
 │  │ FastAPI      │ ←──────────→  │ kindle_calendar.db   │   │
 │  │ :8082        │               │ events / habits      │   │
@@ -149,7 +149,7 @@ sudo cp server/database.py /opt/kindle-calendar/server/
 systemctl restart kindle-calendar
 
 # 同步到 Kindle
-scp -i ~/.ssh/kindle_key kindle/calendar_renderer.py root@192.168.10.72:/mnt/us/extensions/KindleCalendar/bin/
+scp -i ~/.ssh/kindle_key kindle/calendar_renderer.py root@KINDLE_HOST:/mnt/us/extensions/KindleCalendar/bin/
 ```
 
 ## 触摸映射（Kindle 7）
