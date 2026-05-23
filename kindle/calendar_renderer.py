@@ -335,10 +335,10 @@ def render_todo_view(draw, events, content_x):
         y += 28
 
 QUADRANT_LABELS = [
-    ("重要紧急", "important", "urgent"),
     ("重要不紧急", "important", "not_urgent"),
-    ("不紧急不重要", "not_important", "not_urgent"),
+    ("重要紧急", "important", "urgent"),
     ("紧急不重要", "not_important", "urgent"),
+    ("不紧急不重要", "not_important", "not_urgent"),
 ]
 
 def render_quadrant_view(draw, events, content_x):
