@@ -120,15 +120,15 @@ def render_left_panel(draw):
     weekday = WEEKDAYS[now.weekday()]
     time_str = now.strftime("%H:%M")
     
-    font_time = make_font(32)
-    font_day = make_font(96)
+    font_time = make_font(50)
+    font_day = make_font(88)
     font_ym = make_font(22)
     font_weekday = make_font(24)
-    
-    draw.text((15, 15), time_str, font=font_time, fill=0)
+
     draw.text((15, 60), str(day), font=font_day, fill=0)
-    draw.text((15, 170), f"{year}年{month:02d}月", font=font_ym, fill=0)
-    draw.text((15, 200), weekday, font=font_weekday, fill=0)
+    draw.text((15, 160), f"{year}年{month:02d}月", font=font_ym, fill=0)
+    draw.text((15, 190), weekday, font=font_weekday, fill=0)
+    draw.text((15, 540), time_str, font=font_time, fill=0)
 
 def render_right_nav(draw, active_view):
     """Render right navigation bar"""

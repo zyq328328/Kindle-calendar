@@ -10,17 +10,19 @@ import sys
 import datetime
 import time
 import subprocess
+import threading
 
 BASE = "/mnt/us/extensions/KindleCalendar/bin"
 sys.path.insert(0, BASE)
-
 from touch_input import wait_for_touch
 from calendar_renderer import render_frame, fetch_events, touch_to_view, W, RIGHT_W
-from eink_display import show_image_full
+from eink_display import show_image_full, show_image_partial
 
 current_view = "home"
 current_date = datetime.date.today()
 IMG_PATH = "/tmp/calendar_frame.png"
+auto_refresh_enabled = False
+auto_refresh_thread = None
 
 
 def restore_kindle():
@@ -99,13 +101,16 @@ def handle_touch(x_phys, y_phys):
     return False
 
 
-def render_current():
+def render_current(full=True):
     """渲染当前视图并推送到屏幕"""
-    print(f"[render] rendering view: {current_view}, date: {current_date}")
+    print(f"[render] rendering view: {current_view}, date: {current_date}, full={full}")
     try:
         events = fetch_events()
         render_frame(current_view, current_date.isoformat(), events, IMG_PATH)
-        show_image_full(IMG_PATH)
+        if full:
+            show_image_full(IMG_PATH)
+        else:
+            show_image_partial(IMG_PATH)
         print(f"[render] success")
     except Exception as e:
         print(f"[render] Error: {e}")
@@ -117,12 +122,33 @@ def render_current():
             print(f"[render] fallback failed: {e2}")
 
 
+def clock_refresh_loop():
+    """后台线程：每分钟刷新时钟区域（今日视图局部刷新）"""
+    global auto_refresh_enabled
+    while auto_refresh_enabled:
+        time.sleep(60)  # 等待60秒
+        if auto_refresh_enabled and current_view == "home":
+            print("[clock_refresh] refreshing clock on home view")
+            try:
+                # 只刷新时钟区域（左侧面板），不触发全屏刷新
+                render_current(full=False)
+            except Exception as e:
+                print(f"[clock_refresh] error: {e}")
+
+
 def main():
     """主循环"""
+    global auto_refresh_enabled, auto_refresh_thread
     print("[plan_a] Starting Kindle Calendar (三栏布局)")
 
     # 初始渲染
     render_current()
+
+    # 启动自动刷新线程（今日视图每分钟局部刷新时钟）
+    auto_refresh_enabled = True
+    auto_refresh_thread = threading.Thread(target=clock_refresh_loop, daemon=True)
+    auto_refresh_thread.start()
+    print("[plan_a] auto clock refresh thread started")
 
     # 触摸主循环
     while True:
