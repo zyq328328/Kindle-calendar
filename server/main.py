@@ -313,7 +313,7 @@ def _render_todo_view(draw, now, font_small, font_medium):
     draw.text((30, 20), "待办清单", fill=0, font=font_medium)
 
     all_events = get_all_events()
-    todos = [e for e in all_events if not e.get("completed")]
+    todos = [e for e in all_events if e.get("type") in ("todo", "habit") and not e.get("completed")]
     todos.sort(key=lambda e: (
         0 if e.get("importance") == "important" and e.get("urgency") == "urgent" else
         1 if e.get("importance") == "important" and e.get("urgency") == "not_urgent" else

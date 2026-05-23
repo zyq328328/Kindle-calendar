@@ -44,7 +44,7 @@
           :style="{ marginLeft: ev.depth * 24 + 'px' }"
         >
           <div class="ev-left">
-            <span class="quadrant-badge" :class="evQuadrant(ev)">{{ evQuadrant(ev) }}</span>
+            <span v-if="ev.type === 'todo' || ev.type === 'habit'" class="quadrant-badge" :class="evQuadrant(ev)">{{ evQuadrant(ev) }}</span>
             <div class="ev-info">
               <span class="ev-title">
                 <span v-if="ev.depth > 0" class="child-indicator">└─ </span>
