@@ -26,7 +26,7 @@ Kindle 7 电子墨水屏智能日历，支持多视图切换、习惯打卡和 W
           │  HTTP (port 8082)
           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  VM2 Server (192.168.188.7)                                  │
+│  Server (192.168.188.7)                                  │
 │  ┌──────────────┐    SQLite     ┌──────────────────────┐   │
 │  │ FastAPI      │ ←──────────→  │ kindle_calendar.db   │   │
 │  │ :8082        │               │ events / habits      │   │
@@ -39,7 +39,7 @@ Kindle 7 电子墨水屏智能日历，支持多视图切换、习惯打卡和 W
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**核心设计**：Kindl 本地渲染 + 触摸，VM2 只提供 API 数据（Plan A）
+**核心设计**：Kindle 本地渲染 + 触摸，Server 只提供 API 数据（Plan A）
 
 ## 目录结构
 
@@ -143,8 +143,8 @@ npm install
 npm run dev   # 开发
 npm run build # 生产构建
 
-# 部署到 VM2
-rsync -av --delete dist/ user@vm2:/opt/kindle-calendar/web/dist/
+# 部署到服务器
+rsync -av --delete dist/ user@server:/opt/kindle-calendar/web/dist/
 sudo cp server/database.py /opt/kindle-calendar/server/
 systemctl restart kindle-calendar
 
