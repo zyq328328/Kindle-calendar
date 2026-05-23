@@ -255,20 +255,34 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
         draw.text((x + 8, 8), date_str, font=font_date, fill=0)
         draw.text((x + 8, 30), f"周{wd}", font=font_small, fill=100)
         
-        # Events
+        # 日程 section（只看 schedule，深度扁平）
         y = 52
-        ev_list = events[:5]
-        for item in ev_list:
-            ev, depth = (item if isinstance(item, tuple) else (item, 0))
-            indent = depth * 15
+        SCHED_H = 22
+        sched_raw = [(e, d) for e, d in events if e.get("type") == "schedule"]
+        for ev, depth in sched_raw[:4]:
+            indent = depth * 12
             time_str = ev.get("time", "")[:5]
-            title = ev.get("title", "")[:12]
+            title = ev.get("title", "")[:10]
             if time_str:
-                draw.text((x + 5 + indent, y), time_str, font=font_small, fill=80)
-                draw.text((x + 55 + indent, y), title, font=font_small, fill=0)
+                draw.text((x + 3 + indent, y), time_str, font=font_small, fill=80)
+                draw.text((x + 48 + indent, y), title, font=font_small, fill=0)
             else:
-                draw.text((x + 5 + indent, y), title, font=font_small, fill=0)
-            y += 30
+                draw.text((x + 3 + indent, y), title, font=font_small, fill=0)
+            y += SCHED_H
+        
+        # 待办 section（只看 todo+habit，加 □）
+        y += 4
+        TODO_H = 22
+        todo_raw = [(e, d) for e, d in events if e.get("type") in ("todo", "habit")]
+        if not todo_raw:
+            draw.text((x + 3, y), "□ 暂无待办", font=font_small, fill=140)
+        else:
+            for ev, depth in todo_raw[:4]:
+                indent = depth * 12
+                title = ev.get("title", "")[:11]
+                draw.text((x + 3 + indent, y), "□", font=font_small, fill=80)
+                draw.text((x + 18 + indent, y), title, font=font_small, fill=0)
+                y += TODO_H
         
         # Column separator
         if i < len(dates) - 1:
@@ -307,10 +321,11 @@ def render_todo_view(draw, events, content_x):
     
     for ev, depth in ev_list[:10]:
         indent = depth * 20
-        title = ev.get("title", "")[:18]
+        title = ev.get("title", "")[:16]
         completed = ev.get("completed", False)
         fill_color = 150 if completed else 0
-        draw.text((content_x + 20 + indent, y), title, font=font_small, fill=fill_color)
+        draw.text((content_x + 20 + indent, y), "□", font=font_small, fill=80)
+        draw.text((content_x + 40 + indent, y), title, font=font_small, fill=fill_color)
         y += 28
 
 QUADRANT_LABELS = [
@@ -351,8 +366,9 @@ def render_quadrant_view(draw, events, content_x):
             
             event_y = y + 40
             for ev in quad_events[:4]:
-                title = ev.get("title", "")[:10]
-                draw.text((x + 10, event_y), title, font=font_small, fill=0)
+                title = ev.get("title", "")[:9]
+                draw.text((x + 10, event_y), "□", font=font_small, fill=80)
+                draw.text((x + 22, event_y), title, font=font_small, fill=0)
                 event_y += 24
 
 def render_settings_view(draw, content_x):
