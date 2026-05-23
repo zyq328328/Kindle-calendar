@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+"""
+字体检测工具 - 测试 Kindle 上可用字体是否支持中文渲染
+
+使用方法：
+    ssh 连接到 Kindle 后执行:
+    python3 check_font.py
+
+作用：
+    1. 检测指定字体文件是否能成功加载
+    2. 测试字体是否支持中文渲染
+    3. 输出详细的测试结果和错误信息
+
+注意：
+    需要在 Kindle 设备上运行，依赖 PIL 库
+"""
 from PIL import Image, ImageDraw, ImageFont
 import traceback
 
