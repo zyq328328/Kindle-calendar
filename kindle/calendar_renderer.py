@@ -395,7 +395,7 @@ def render_quadrant_view(draw, events, content_x):
 
             event_y = y + 48
             for ev in quad_events:
-                title = ev.get("title", "")[:9]
+                title = ev.get("title", "")[:14]
                 draw.text((x + 10, event_y), "□", font=font_small, fill=80)
                 draw.text((x + 22, event_y), title, font=font_small, fill=0)
                 event_y += 24
