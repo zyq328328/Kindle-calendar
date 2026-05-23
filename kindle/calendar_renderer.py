@@ -28,8 +28,8 @@ RIGHT_ACTIVE = 80 # Selected item background
 # Right navigation items (top to bottom)
 NAV_ITEMS = [
     ("今日", "home"),
-    ("日", "day"),
-    ("3日", "three_day"),
+    ("单日", "day"),
+    ("三日", "three_day"),
     ("待办", "list"),
     ("四象", "quadrant"),
     ("刷新", "refresh"),
