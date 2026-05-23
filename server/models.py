@@ -15,6 +15,7 @@ class EventBase(BaseModel):
     type: Literal["schedule", "todo", "habit"] = "schedule"  # 日程 or 待办 or 习惯
     recurrence_rule: Literal["none", "daily", "weekdays", "weekly", "monthly"] = "none"  # 重复周期
     start_date: Optional[str] = None  # YYYY-MM-DD 习惯开始日期
+    end_date: Optional[str] = None  # YYYY-MM-DD 习惯结束日期，留空表示无限重复
     last_completed_date: Optional[str] = None  # YYYY-MM-DD 上次打卡日期
     parent_id: Optional[int] = None  # 父任务 ID，null 表示顶级任务
     updated_at: Optional[str] = None
@@ -35,6 +36,7 @@ class EventUpdate(BaseModel):
     type: Optional[Literal["schedule", "todo", "habit"]] = None
     recurrence_rule: Optional[Literal["none", "daily", "weekdays", "weekly", "monthly"]] = None
     start_date: Optional[str] = None
+    end_date: Optional[str] = None
     last_completed_date: Optional[str] = None
     parent_id: Optional[int] = None  # 可以设置为 null 来移除父子关系
 
@@ -65,11 +67,13 @@ class EventTreeItem(BaseModel):
     type: Literal["schedule", "todo", "habit"] = "schedule"
     recurrence_rule: Literal["none", "daily", "weekdays", "weekly", "monthly"] = "none"
     start_date: Optional[str] = None
+    end_date: Optional[str] = None
     last_completed_date: Optional[str] = None
     parent_id: Optional[int] = None
     updated_at: str
     created_at: str
     children: list["EventTreeItem"] = []
+    display_dates: list[str] = []  # 重复事件的全部日期列表
 
     class Config:
         from_attributes = True
