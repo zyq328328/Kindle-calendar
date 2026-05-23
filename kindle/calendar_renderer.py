@@ -376,9 +376,9 @@ def render_quadrant_view(draw, events, content_x):
     mid_x = content_x + col_w
     mid_y = row_h
     # Horizontal line (separates top/bottom rows)
-    draw.line([(content_x, mid_y), (content_x + content_w, mid_y)], fill=100, width=2)
+    draw.line([(content_x, mid_y), (content_x + content_w, mid_y)], fill=0, width=2)
     # Vertical line (separates left/right columns)
-    draw.line([(mid_x, 0), (mid_x, H)], fill=100, width=2)
+    draw.line([(mid_x, 0), (mid_x, H)], fill=0, width=2)
 
     for row in range(2):
         for col in range(2):
@@ -387,7 +387,6 @@ def render_quadrant_view(draw, events, content_x):
             x = content_x + col * col_w
             y = row * row_h
             
-            draw.rectangle([(x, y), (x + col_w - 2, y + row_h - 2)], fill=248)
             draw.text((x + 10, y + 10), label, font=font_title, fill=0)
 
             quad_events = [e for e in todo_events
