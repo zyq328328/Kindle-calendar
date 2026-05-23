@@ -194,7 +194,7 @@ def render_day_or_home_view(draw, date_str, events, content_x, is_home=False):
         draw.text((content_x + 30, y), "暂无日程", font=font_small, fill=150)
         y += 25
     else:
-        for ev, depth in schedules_raw[:5]:
+        for ev, depth in schedules_raw:
             indent = depth * 20
             time_str = ev.get("time", "")[:5]
             title = ev.get("title", "")[:14]
@@ -214,7 +214,7 @@ def render_day_or_home_view(draw, date_str, events, content_x, is_home=False):
     if not todos_raw:
         draw.text((content_x + 30, y), "暂无待办", font=font_small, fill=150)
     else:
-        for ev, depth in todos_raw[:6]:
+        for ev, depth in todos_raw:
             indent = depth * 20
             title = ev.get("title", "")[:16]
             draw.text((content_x + 30 + indent, y), "□", font=font_small, fill=80)
