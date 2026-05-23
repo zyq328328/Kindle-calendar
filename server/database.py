@@ -67,8 +67,8 @@ def create_event(event_data: dict) -> dict:
     with get_db() as conn:
         c = conn.cursor()
         c.execute("""
-            INSERT INTO events (title, description, date, time, importance, urgency, is_countdown, countdown_target, completed, type, recurrence_rule, start_date, last_completed_date, parent_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO events (title, description, date, time, importance, urgency, is_countdown, countdown_target, completed, type, recurrence_rule, start_date, end_date, last_completed_date, parent_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             event_data["title"],
             event_data.get("description", ""),
@@ -82,6 +82,7 @@ def create_event(event_data: dict) -> dict:
             event_data.get("type", "schedule"),
             event_data.get("recurrence_rule", "none"),
             event_data.get("start_date"),
+            event_data.get("end_date"),
             event_data.get("last_completed_date"),
             event_data.get("parent_id"),
             now,
@@ -94,7 +95,7 @@ def update_event(event_id: int, event_data: dict) -> Optional[dict]:
     now = datetime.now().isoformat()
     updates = []
     values = []
-    for key in ["title", "description", "date", "time", "importance", "urgency", "is_countdown", "countdown_target", "completed", "type", "recurrence_rule", "start_date", "last_completed_date", "parent_id"]:
+    for key in ["title", "description", "date", "time", "importance", "urgency", "is_countdown", "countdown_target", "completed", "type", "recurrence_rule", "start_date", "end_date", "last_completed_date", "parent_id"]:
         if key in event_data:
             updates.append(f"{key} = ?")
             if key in ["is_countdown", "completed"]:
@@ -135,6 +136,12 @@ def get_event_tree() -> list[dict]:
     end = (today + datetime.timedelta(days=270)).isoformat()
     # 用 get_events_in_range 展开重复规则
     all_events = get_events_in_range(start, end)
+    # 按 id 去重（expand_recurrence 产生了多条同 id 记录），保留第一条（start_date 最近的原始日期）
+    unique_events = {}
+    for ev in all_events:
+        if ev["id"] not in unique_events:
+            unique_events[ev["id"]] = ev
+    all_events = list(unique_events.values())
     # 构建 parent_id -> children 映射
     children_map = {}
     for ev in all_events:
@@ -163,6 +170,7 @@ def migrate_add_missing_columns():
             ("start_date", "TEXT"),
             ("last_completed_date", "TEXT"),
             ("parent_id", "INTEGER REFERENCES events(id) ON DELETE CASCADE"),
+            ("end_date", "TEXT"),
         ]
         for col_name, col_def in migrations:
             if col_name not in existing:
@@ -200,7 +208,7 @@ def get_server_time() -> str:
 
 
 def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]:
-    """将带重复规则的 habit 展开为指定日期范围内的一系列打卡记录"""
+    """将带重复规则的事件展开为指定日期范围内的一系列记录"""
     rule = habit.get("recurrence_rule", "none")
     if rule == "none":
         return [habit]
@@ -210,49 +218,68 @@ def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]
 
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
-
-    # 从 habit 开始日期（或查询范围起始）到末尾，生成应打卡的日期
     habit_start = datetime.strptime(habit.get("start_date", habit["date"]), "%Y-%m-%d")
-    # 直接从查询范围起始日和 habit 起始日的较大者开始，避免远期习惯迭代过慢
     current = max(habit_start, start)
 
-    occurrences = []
-    while current <= end:
-        occ = dict(habit)
-        occ["date"] = current.strftime("%Y-%m-%d")
-        last_done = habit.get("last_completed_date")
-        occ["completed"] = bool(last_done and last_done == current.strftime("%Y-%m-%d"))
-        # SQLite stores booleans as integers, ensure proper bool conversion
-        occ["is_countdown"] = bool(occ.get("is_countdown"))
-        occ["completed"] = bool(occ.get("completed"))
-        occurrences.append(occ)
-        # 推进到下一个周期
+    # 重复结束日期（没有则无期限）
+    habit_end_str = habit.get("end_date") or None
+    habit_end = datetime.strptime(habit_end_str, "%Y-%m-%d") if habit_end_str else None
+
+    def _next(cur, rule):
+        """返回下一个日期（不修改 cur）"""
         if rule == "daily":
-            current += timedelta(days=1)
+            return cur + timedelta(days=1)
         elif rule == "weekdays":
-            current += timedelta(days=1)
-            while current.weekday() >= 5:
-                current += timedelta(days=1)
+            nxt = cur + timedelta(days=1)
+            while nxt.weekday() >= 5:
+                nxt += timedelta(days=1)
+            return nxt
         elif rule == "weekly":
-            current += timedelta(weeks=1)
+            return cur + timedelta(weeks=1)
         elif rule == "monthly":
-            # 使用 calendar 模块正确计算下个月的日期
-            month = current.month
-            year = current.year
-            month += 1
+            month = cur.month + 1
+            year = cur.year
             if month > 12:
                 month = 1
                 year += 1
-            # 获取目标月份的最大天数，避免硬编码列表
             max_day = calendar.monthrange(year, month)[1]
-            day = min(current.day, max_day)
-            current = datetime(year, month, day)
+            day = min(cur.day, max_day)
+            return datetime(year, month, day)
+        return cur + timedelta(days=1)
+
+    # 第一遍：收集所有日期
+    all_dates = []
+    cur = current
+    for _ in range(1000):
+        if cur > end:
+            break
+        if habit_end and cur > habit_end:
+            break
+        all_dates.append(cur.strftime("%Y-%m-%d"))
+        cur = _next(cur, rule)
+
+    # 第二遍：生成 occurrence，每个带完整的 display_dates
+    occurrences = []
+    cur = current
+    for _ in range(1000):
+        if cur > end:
+            break
+        if habit_end and cur > habit_end:
+            break
+        occ = dict(habit)
+        occ["date"] = cur.strftime("%Y-%m-%d")
+        occ["display_dates"] = all_dates
+        last_done = habit.get("last_completed_date")
+        occ["completed"] = bool(last_done and last_done == cur.strftime("%Y-%m-%d"))
+        occ["is_countdown"] = bool(occ.get("is_countdown"))
+        occurrences.append(occ)
+        cur = _next(cur, rule)
 
     return occurrences
 
 
 def get_events_in_range(start_date: str, end_date: str) -> list[dict]:
-    """返回日期范围内所有事件，含展开后的习惯打卡记录"""
+    """返回日期范围内所有事件，含展开后的重复记录"""
     all_events = get_all_events()
     result = []
 
@@ -260,7 +287,6 @@ def get_events_in_range(start_date: str, end_date: str) -> list[dict]:
         if ev.get("recurrence_rule", "none") != "none":
             result.extend(expand_recurrence(ev, start_date, end_date))
         else:
-            # 过滤不在范围内的普通事件
             ev_date = ev.get("date", "")
             if start_date <= ev_date <= end_date:
                 result.append(ev)

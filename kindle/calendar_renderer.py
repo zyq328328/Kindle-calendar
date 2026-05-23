@@ -68,6 +68,19 @@ def tb(font_size, text):
             width += font_size * 0.6
     return width
 
+
+def _event_matches_date(ev, date_key):
+    """Check if event should appear on given date (supports display_dates fallback)"""
+    ev_date = ev.get("date", "")
+    if ev_date.startswith(date_key):
+        return True
+    # 对于重复事件，display_dates 包含所有应出现的日期
+    display_dates = ev.get("display_dates", [])
+    if display_dates and date_key in display_dates:
+        return True
+    return False
+
+
 def flatten_tree(tree, depth=0):
     """将事件树展平为 (event, depth) 列表，用于带缩进的渲染"""
     result = []
@@ -169,7 +182,7 @@ def render_day_or_home_view(draw, date_str, events, content_x, is_home=False):
         draw.text((content_x + 20, y), f"{d.month}月{d.day}日 {wd}", font=font_title, fill=0)
     y += 45
     
-    day_events_raw = [(e, d) for e, d in events if e.get("date") == date_str]
+    day_events_raw = [(e, d) for e, d in events if _event_matches_date(e, date_str)]
     schedules_raw = [(e, d) for e, d in day_events_raw if e.get("type") == "schedule"]
     todos_raw = [(e, d) for e, d in day_events_raw if e.get("type") in ("todo", "habit")]
     
@@ -224,10 +237,13 @@ def group_events_by_date(events, center_date):
         date_key = d.isoformat()
         # events can be [(event, depth), ...] or [event, ...]
         if events and isinstance(events[0], tuple):
-            result[date_key] = [(e, depth) for e, depth in events if e.get("date", "").startswith(date_key)]
+            result[date_key] = [(e, depth) for e, depth in events
+                                if _event_matches_date(e, date_key)]
         else:
-            result[date_key] = [e for e in events if e.get("date", "").startswith(date_key)]
+            result[date_key] = [e for e in events
+                                if _event_matches_date(e, date_key)]
     return result
+
 
 def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, content_w=None):
     """Three-day view: 3 columns of date + schedule"""

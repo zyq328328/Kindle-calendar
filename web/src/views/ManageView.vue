@@ -141,6 +141,12 @@
             <input v-model="form.start_date" type="date" />
           </div>
         </div>
+        <div class="form-row" v-if="form.type === 'habit'">
+          <div class="form-group">
+            <label>结束日期</label>
+            <input v-model="form.end_date" type="date" placeholder="留空表示无限重复" />
+          </div>
+        </div>
         <div class="form-group">
           <label>描述</label>
           <textarea v-model="form.description" rows="2"></textarea>
@@ -174,7 +180,7 @@ const filterImportance = ref('')
 const filterUrgency = ref('')
 const synced = ref(true)
 
-const form = ref({ title: '', date: '', time: '', type: 'schedule', importance: 'not_important', urgency: 'not_urgent', description: '', is_countdown: false, recurrence_rule: 'none', start_date: '', last_completed_date: '', parent_id: null })
+const form = ref({ title: '', date: '', time: '', type: 'schedule', importance: 'not_important', urgency: 'not_urgent', description: '', is_countdown: false, recurrence_rule: 'none', start_date: '', end_date: '', last_completed_date: '', parent_id: null })
 
 onMounted(() => { store.fetchEvents(); store.fetchEventsTree() })
 
@@ -265,7 +271,7 @@ function typeLabel(t) {
 
 function openAdd() {
   editing.value = null
-  form.value = { title: '', date: new Date().toISOString().substring(0, 10), time: '', type: 'schedule', importance: 'not_important', urgency: 'not_urgent', description: '', is_countdown: false, recurrence_rule: 'none', start_date: new Date().toISOString().substring(0, 10), last_completed_date: '', parent_id: null }
+  form.value = { title: '', date: new Date().toISOString().substring(0, 10), time: '', type: 'schedule', importance: 'not_important', urgency: 'not_urgent', description: '', is_countdown: false, recurrence_rule: 'none', start_date: new Date().toISOString().substring(0, 10), end_date: '', last_completed_date: '', parent_id: null }
   showModal.value = true
 }
 
