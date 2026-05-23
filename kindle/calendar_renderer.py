@@ -134,55 +134,70 @@ def touch_to_view(x, y):
         return NAV_ITEMS[idx][1]
     return None
 
-def render_home_view(draw, events, content_x):
-    """Home view"""
+def render_day_or_home_view(draw, date_str, events, content_x, is_home=False):
+    """Day/Home view - separate schedules and todos"""
     font_title = make_font(24)
-    font_small = make_font(20)
+    font_small = make_font(18)
+    font_section = make_font(20)
     
-    y = 20
-    draw.text((content_x + 20, y), "今日日程", font=font_title, fill=0)
-    y += 40
+    if is_home:
+        today = datetime.date.today()
+        d = today
+        date_str = today.isoformat()
+    else:
+        d = datetime.date.fromisoformat(date_str)
     
-    today = datetime.date.today().isoformat()
-    today_events = [e for e in events if e.get("date") == today]
-    
-    if not today_events:
-        draw.text((content_x + 20, y), "暂无日程", font=font_small, fill=100)
-        return
-    
-    for ev in today_events[:8]:
-        time_str = ev.get("time", "")[:5]
-        title = ev.get("title", "")[:15]
-        if time_str:
-            draw.text((content_x + 10, y), time_str, font=font_small, fill=80)
-        draw.text((content_x + 70, y), title, font=font_small, fill=0)
-        y += 28
-
-def render_day_view(draw, date_str, events, content_x):
-    """Day view"""
-    font_title = make_font(24)
-    font_small = make_font(20)
-    
-    d = datetime.date.fromisoformat(date_str)
     wd = WEEKDAYS[d.weekday()]
     
     y = 20
-    draw.text((content_x + 20, y), f"{d.month}月{d.day}日 {wd}", font=font_title, fill=0)
-    y += 40
+    if is_home:
+        draw.text((content_x + 20, y), "今日", font=font_title, fill=0)
+    else:
+        draw.text((content_x + 20, y), f"{d.month}月{d.day}日 {wd}", font=font_title, fill=0)
+    y += 45
     
     day_events = [e for e in events if e.get("date") == date_str]
+    schedules = [e for e in day_events if e.get("type") == "schedule"]
+    todos = [e for e in day_events if e.get("type") in ("todo", "habit")]
     
-    if not day_events:
-        draw.text((content_x + 20, y), "暂无日程", font=font_small, fill=100)
-        return
+    # 日程 section
+    draw.text((content_x + 20, y), "【日程】", font=font_section, fill=0)
+    y += 30
     
-    for ev in day_events[:8]:
-        time_str = ev.get("time", "")[:5]
-        title = ev.get("title", "")[:15]
-        if time_str:
-            draw.text((content_x + 10, y), time_str, font=font_small, fill=80)
-        draw.text((content_x + 70, y), title, font=font_small, fill=0)
-        y += 28
+    if not schedules:
+        draw.text((content_x + 30, y), "暂无日程", font=font_small, fill=150)
+        y += 25
+    else:
+        for ev in schedules[:5]:
+            time_str = ev.get("time", "")[:5]
+            title = ev.get("title", "")[:14]
+            if time_str:
+                draw.text((content_x + 30, y), time_str, font=font_small, fill=80)
+            draw.text((content_x + 85, y), title, font=font_small, fill=0)
+            y += 25
+    
+    y += 10
+    
+    # 待办 section
+    draw.text((content_x + 20, y), "【待办】", font=font_section, fill=0)
+    y += 30
+    
+    if not todos:
+        draw.text((content_x + 30, y), "暂无待办", font=font_small, fill=150)
+    else:
+        for ev in todos[:6]:
+            title = ev.get("title", "")[:16]
+            draw.text((content_x + 30, y), "□", font=font_small, fill=80)
+            draw.text((content_x + 50, y), title, font=font_small, fill=0)
+            y += 25
+
+def render_home_view(draw, events, content_x):
+    """Home view"""
+    render_day_or_home_view(draw, None, events, content_x, is_home=True)
+
+def render_day_view(draw, date_str, events, content_x):
+    """Day view"""
+    render_day_or_home_view(draw, date_str, events, content_x, is_home=False)
 
 def group_events_by_date(events, center_date):
     """Group events by date from already fetched list"""
@@ -268,13 +283,16 @@ QUADRANT_LABELS = [
 ]
 
 def render_quadrant_view(draw, events, content_x):
-    """Four quadrant view"""
+    """Four quadrant view - only todo and habit"""
     font_title = make_font(20)
     font_small = make_font(18)
     
     content_w = W - RIGHT_W - content_x
     col_w = content_w // 2
     row_h = H // 2
+    
+    # Filter: only todo and habit
+    todo_events = [e for e in events if e.get("type") in ("todo", "habit")]
     
     for row in range(2):
         for col in range(2):
@@ -286,8 +304,8 @@ def render_quadrant_view(draw, events, content_x):
             draw.rectangle([(x, y), (x + col_w - 2, y + row_h - 2)], fill=248)
             draw.text((x + 10, y + 10), label, font=font_title, fill=0)
             
-            quad_events = [e for e in events 
-                         if e.get("importance") == importance 
+            quad_events = [e for e in todo_events
+                         if e.get("importance") == importance
                          and e.get("urgency") == urgency]
             
             event_y = y + 40

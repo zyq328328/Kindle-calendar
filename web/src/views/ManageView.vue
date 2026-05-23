@@ -107,15 +107,16 @@
             </select>
           </div>
         </div>
-        <div class="form-row">
-          <div class="form-group" v-if="form.type !== 'habit'">
+        <!-- 重要性和紧急性 - 只对待办和习惯显示 -->
+        <div class="form-row" v-if="form.type === 'todo' || form.type === 'habit'">
+          <div class="form-group">
             <label>重要性</label>
             <select v-model="form.importance">
               <option value="not_important">非重要</option>
               <option value="important">重要</option>
             </select>
           </div>
-          <div class="form-group" v-if="form.type !== 'habit'">
+          <div class="form-group">
             <label>紧急性</label>
             <select v-model="form.urgency">
               <option value="not_urgent">非紧急</option>
