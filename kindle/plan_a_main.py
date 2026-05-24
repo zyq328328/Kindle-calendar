@@ -11,12 +11,17 @@ import datetime
 import time
 import subprocess
 import threading
+import urllib.request
+import urllib.parse
+import json
 
 BASE = "/mnt/us/extensions/KindleCalendar/bin"
 sys.path.insert(0, BASE)
 from touch_input import wait_for_touch
-from calendar_renderer import render_frame, fetch_events, touch_to_view, W, RIGHT_W
+from calendar_renderer import render_frame, fetch_events, touch_to_view, W, RIGHT_W, LEFT_W, flatten_tree, _event_matches_date
 from eink_display import show_image_full, show_image_partial
+
+SERVER_URL = "http://192.168.10.7:8082/api/events"
 
 current_view = "home"
 current_date = datetime.date.today()
@@ -51,6 +56,109 @@ def rot_coord(x_phys, y_phys):
     return 800 - y_phys, x_phys
 
 
+def mark_event_completed(event_id):
+    """调用API标记事件完成"""
+    try:
+        url = f"{SERVER_URL}/{event_id}"
+        data = json.dumps({"completed": True}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            method="PUT",
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            print(f"[api] Marked event {event_id} as completed")
+            return True
+    except Exception as e:
+        print(f"[api] Error marking event {event_id} completed: {e}")
+        return False
+
+
+def find_tapped_todo(x_rot, y_rot, events):
+    """
+    在今日视图中查找被点击的待办项
+    只有不含子项的待办可点击（无论是否为父项）
+    """
+    content_x = LEFT_W
+    print(f"[find_todo] Looking for tap at ({x_rot}, {y_rot}), content_x={content_x}, W={W}, RIGHT_W={RIGHT_W}")
+    
+    # 只处理内容区（右侧导航栏除外）
+    if x_rot >= W - RIGHT_W:
+        print(f"[find_todo] Tap in navigation area, skipping")
+        return None
+    
+    # 获取今日日期
+    today_str = datetime.date.today().isoformat()
+    print(f"[find_todo] Today: {today_str}")
+    
+    # 展开树结构并过滤今日的待办项和日程项
+    flat_events = flatten_tree(events)
+    print(f"[find_todo] Total events in tree: {len(flat_events)}")
+    
+    # 打印所有事件的信息（调试）
+    for ev, depth in flat_events:
+        ev_type = ev.get("type", "unknown")
+        ev_date = ev.get("date", "N/A")
+        ev_title = ev.get("title", "Untitled")[:20]
+        matches = _event_matches_date(ev, today_str)
+        print(f"[find_todo]   Event: type={ev_type}, title='{ev_title}', date='{ev_date}', matches={matches}")
+    
+    # 过滤今日的日程项（计算日程占用空间）
+    schedules = [(ev, depth) for ev, depth in flat_events 
+                 if ev.get("type") == "schedule" and _event_matches_date(ev, today_str)]
+    num_schedules = min(len(schedules), 5)  # 最多显示5个
+    print(f"[find_todo] Found {num_schedules} schedules for today")
+    
+    # 过滤今日的待办项
+    todos = [(ev, depth) for ev, depth in flat_events 
+             if ev.get("type") in ("todo", "habit") and _event_matches_date(ev, today_str)]
+    
+    print(f"[find_todo] Found {len(todos)} todos for today")
+    for ev, depth in todos:
+        print(f"[find_todo]   Todo: '{ev.get('title')}', date: '{ev.get('date')}', has_children: {bool(ev.get('children'))}")
+    
+    # 精确计算待办区域的起始位置（与渲染逻辑完全一致）
+    # y=20(标题起始) + 45(标题高度) + 30(日程标题) + 日程内容 + 10(间隔) + 30(待办标题)
+    y = 20 + 45 + 30 + num_schedules * 25 + 10 + 30
+    
+    print(f"[find_todo] Starting y position: {y}")
+    
+    for ev, depth in todos:
+        indent = depth * 20
+        # □ 的位置（content_x + 30 + indent, y）
+        box_x = content_x + 30 + indent
+        box_y = y
+        
+        title = ev.get("title", "Untitled")
+        has_children = ev.get("children") and len(ev["children"]) > 0
+        
+        print(f"[find_todo] Todo: '{title}' at ({box_x}, {box_y}), depth={depth}, has_children={has_children}")
+        
+        # 检测范围：整个待办项行（从复选框到行尾）
+        row_start_x = content_x + 20 + indent
+        row_end_x = W - RIGHT_W - 10
+        row_start_y = y - 5
+        row_end_y = y + 25
+        
+        print(f"[find_todo]   Touch range: x=[{row_start_x},{row_end_x}], y=[{row_start_y},{row_end_y}]")
+        
+        # 检查触摸是否在待办项行内
+        if (row_start_x <= x_rot <= row_end_x) and (row_start_y <= y_rot <= row_end_y):
+            print(f"[find_todo]   TAPPED!")
+            # 检查是否为有子项的父项（有子项的父项不可点击）
+            if has_children:
+                print(f"[find_todo]   But has children, skipping")
+            else:
+                print(f"[find_todo]   Returning this todo")
+                return ev
+        
+        y += 25  # 每项高度
+    
+    print(f"[find_todo] No todo found at this position")
+    return None
+
+
 def handle_touch(x_phys, y_phys):
     """处理触摸"""
     global current_view, current_date
@@ -73,6 +181,44 @@ def handle_touch(x_phys, y_phys):
                 print(f"[touch] view changed to: {current_view}")
                 return True
         return False
+    
+    # 今日视图的待办项点击处理
+    if current_view == "home":
+        print(f"[touch] Current view is home, checking todo click")
+        print(f"[touch] Touch position in content area: ({x_rot}, {y_rot})")
+        # 转换为树结构（fetch_events返回flat格式，需要获取原始树）
+        try:
+            TREE_URL = SERVER_URL.replace("/api/events", "/api/events/tree")
+            print(f"[touch] Fetching tree from: {TREE_URL}")
+            req = urllib.request.Request(TREE_URL)
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                print(f"[touch] HTTP response code: {resp.getcode()}")
+                tree = json.loads(resp.read().decode())
+                print(f"[touch] Got tree with {len(tree)} root events")
+                # 打印所有事件信息用于调试
+                for i, ev in enumerate(tree):
+                    print(f"[touch] Event {i}: title='{ev.get('title')}', type='{ev.get('type')}', date='{ev.get('date')}'")
+                    children = ev.get('children', [])
+                    for j, child in enumerate(children):
+                        print(f"[touch]   Child {j}: title='{child.get('title')}', type='{child.get('type')}', date='{child.get('date')}'")
+                tapped_todo = find_tapped_todo(x_rot, y_rot, tree)
+                if tapped_todo:
+                    print(f"[touch] Tapped todo: {tapped_todo.get('title')}")
+                    if mark_event_completed(tapped_todo["id"]):
+                        print(f"[touch] Marked as completed, re-rendering")
+                        render_current()
+                    else:
+                        print(f"[touch] Failed to mark as completed")
+                    return False
+                else:
+                    print(f"[touch] No todo tapped at this position")
+        except Exception as e:
+            print(f"[touch] Error fetching tree or finding todo: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    else:
+        print(f"[touch] Current view is {current_view}, not home, skipping todo click")
 
     # 设置视图中的退出按钮处理
     if current_view == "settings":
