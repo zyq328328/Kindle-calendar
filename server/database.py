@@ -270,7 +270,13 @@ def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]
         occ["date"] = cur.strftime("%Y-%m-%d")
         occ["display_dates"] = all_dates
         last_done = habit.get("last_completed_date")
-        occ["completed"] = bool(last_done and last_done == cur.strftime("%Y-%m-%d"))
+        hs = habit.get("start_date", "")
+        he = habit.get("end_date", "")
+        # 阶段任务语义：last_done 在区间内，则整个区间所有日期都显示完成
+        if last_done and hs and he:
+            occ["completed"] = bool(habit.get("completed")) and (hs <= last_done <= he)
+        else:
+            occ["completed"] = bool(habit.get("completed")) and last_done and last_done == cur.strftime("%Y-%m-%d")
         occ["is_countdown"] = bool(occ.get("is_countdown"))
         occurrences.append(occ)
         cur = _next(cur, rule)
@@ -288,7 +294,10 @@ def get_events_in_range(start_date: str, end_date: str) -> list[dict]:
             result.extend(expand_recurrence(ev, start_date, end_date))
         else:
             ev_date = ev.get("date", "")
-            if start_date <= ev_date <= end_date:
+            ev_start = ev.get("start_date") or ev_date
+            ev_end = ev.get("end_date") or ev_start
+            # 区间重叠判断：查询范围 [start_date, end_date] 与事件区间 [ev_start, ev_end] 有无交集
+            if max(start_date, ev_start) <= min(end_date, ev_end):
                 result.append(ev)
 
     return result

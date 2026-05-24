@@ -13,7 +13,7 @@ api.interceptors.response.use(
 )
 
 export const eventApi = {
-  list: () => api.get('/events').then(r => r.data),
+  list: (start, end) => start && end ? api.get('/events', { params: { start, end } }).then(r => r.data) : api.get('/events').then(r => r.data),
 
   tree: () => api.get('/events/tree').then(r => r.data),
 

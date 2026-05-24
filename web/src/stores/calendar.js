@@ -25,6 +25,15 @@ export const useCalendarStore = defineStore('calendar', () => {
     }
   }
 
+  async function fetchEventsRange(start, end) {
+    loading.value = true
+    try {
+      events.value = await eventApi.list(start, end)
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function fetchEventsTree() {
     loading.value = true
     try {
@@ -63,5 +72,5 @@ export const useCalendarStore = defineStore('calendar', () => {
     await fetchEventsTree()
   }
 
-  return { events, tree, loading, checkHealth, fetchEvents, fetchEventsTree, createEvent, updateEvent, deleteEvent, checkinHabit }
+  return { events, tree, loading, checkHealth, fetchEvents, fetchEventsRange, fetchEventsTree, createEvent, updateEvent, deleteEvent, checkinHabit }
 })

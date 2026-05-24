@@ -46,22 +46,25 @@
           <div class="ev-left">
             <span v-if="ev.type === 'todo' || ev.type === 'habit'" class="quadrant-badge" :class="evQuadrant(ev)">{{ evQuadrant(ev) }}</span>
             <div class="ev-info">
-              <span class="ev-title">
+              <span class="ev-title" :class="{ done: ev.completed }">
                 <span v-if="ev.depth > 0" class="child-indicator">└─ </span>
+                <span v-if="ev.completed" class="done-icon">✓</span>
                 {{ ev.title }}
               </span>
               <span class="ev-meta">
                 <span v-if="ev.parent_id" class="parent-ref">→ 父任务 #{{ ev.parent_id }}</span>
                 {{ ev.date }} {{ ev.time || '' }}
+                <span v-if="ev.completed && ev.last_completed_date" class="done-date">✓ 已完成 {{ ev.last_completed_date }}</span>
               </span>
             </div>
           </div>
           <div class="ev-right">
             <span class="ev-type-badge" :class="ev.type">{{ typeLabel(ev.type) }}</span>
+            <span v-if="ev.completed" class="done-badge">已完成</span>
             <button v-if="ev.type === 'habit'" @click="checkin(ev)" :class="{ checked: ev.completed }">
               {{ ev.completed ? '✓ 已打卡' : '打卡' }}
             </button>
-            <button @click="toggleDone(ev)">{{ ev.completed ? '取消' : '完成' }}</button>
+            <button @click="toggleDone(ev)" :class="{ done: ev.completed }">{{ ev.completed ? '取消完成' : '完成' }}</button>
             <button @click="openEdit(ev)">编辑</button>
             <button @click="remove(ev.id)" class="del">删除</button>
           </div>
@@ -124,8 +127,8 @@
             </select>
           </div>
         </div>
-        <!-- 重复周期（支持日程/待办/习惯） -->
-        <div class="form-row" v-if="form.type === 'schedule' || form.type === 'todo' || form.type === 'habit'">
+        <!-- 重复周期（仅日程和习惯） -->
+        <div class="form-row" v-if="form.type === 'schedule' || form.type === 'habit'">
           <div class="form-group">
             <label>重复周期</label>
             <select v-model="form.recurrence_rule">
@@ -143,6 +146,17 @@
           <div class="form-group" v-if="form.recurrence_rule !== 'none'">
             <label>结束日期</label>
             <input v-model="form.end_date" type="date" placeholder="留空表示无限重复" />
+          </div>
+        </div>
+        <!-- 持续时间（待办专用：开始～结束日期） -->
+        <div class="form-row" v-if="form.type === 'todo'">
+          <div class="form-group">
+            <label>开始日期</label>
+            <input v-model="form.start_date" type="date" />
+          </div>
+          <div class="form-group">
+            <label>结束日期</label>
+            <input v-model="form.end_date" type="date" placeholder="截止日期" />
           </div>
         </div>
         <div class="form-group">
@@ -269,7 +283,7 @@ function typeLabel(t) {
 
 function openAdd() {
   editing.value = null
-  form.value = { title: '', date: new Date().toISOString().substring(0, 10), time: '', type: 'schedule', importance: 'not_important', urgency: 'not_urgent', description: '', is_countdown: false, recurrence_rule: 'none', start_date: new Date().toISOString().substring(0, 10), end_date: '', last_completed_date: '', parent_id: null }
+  form.value = { title: '', date: new Date().toISOString().substring(0, 10), time: '', type: 'schedule', importance: 'not_important', urgency: 'not_urgent', description: '', is_countdown: false, recurrence_rule: 'none', start_date: new Date().toISOString().substring(0, 10), end_date: new Date().toISOString().substring(0, 10), last_completed_date: '', parent_id: null }
   showModal.value = true
 }
 
@@ -345,15 +359,20 @@ async function checkSync() {
 .quadrant-badge.Q4 { background: #f0fdf4; color: #16a34a; }
 .ev-info { display: flex; flex-direction: column; gap: 3px; }
 .ev-title { font-size: 15px; font-weight: 500; }
+.ev-title.done { text-decoration: line-through; color: #94a3b8; }
+.done-icon { color: #16a34a; margin-right: 4px; font-weight: bold; }
 .child-indicator { color: #94a3b8; font-weight: 400; }
 .ev-meta { font-size: 13px; color: #64748b; }
+.done-date { color: #16a34a; margin-left: 8px; }
 .parent-ref { color: #94a3b8; margin-right: 8px; }
 .ev-right { display: flex; gap: 8px; align-items: center; }
+.done-badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #dcfce7; color: #16a34a; font-weight: 600; }
 .ev-type-badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
 .ev-type-badge.schedule { background: #dbeafe; color: #2563eb; }
 .ev-type-badge.todo { background: #fef3c7; color: #d97706; }
 .ev-type-badge.habit { background: #d1fae5; color: #059669; }
 .ev-right button { padding: 5px 12px; border: 1px solid #e2e8f0; background: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.ev-right button.done { background: #dcfce7; color: #16a34a; border-color: #bbf7d0; }
 .ev-right .del { color: #ef4444; border-color: #fecaca; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { background: #fff; border-radius: 16px; padding: 28px; width: 460px; max-width: 95vw; }

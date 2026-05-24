@@ -228,13 +228,17 @@ def _render_day_view(draw, now, font_date, font_medium, font_small, font_time):
 
     # 右列：今日日程
     today = now.strftime("%Y-%m-%d")
-    events = [e for e in get_all_events() if e.get("date", "").startswith(today)]
+    events = get_events_in_range(today, today)
     y = 30
     for ev in events:
         t = ev.get("time", "")
         title = ev.get("title", "")[:16]
-        line = f"{t}  {title}" if t else f"     {title}"
-        draw.text((390, y), line, fill=60, font=font_small)
+        completed = ev.get("completed", False)
+        box = "■" if completed else "□"
+        box_fill = 120 if completed else 60
+        title_fill = 150 if completed else 0
+        line = f"{t}  {box} {title}" if t else f"     {box} {title}"
+        draw.text((390, y), line, fill=title_fill, font=font_small)
         y += 28
     if not events:
         draw.text((390, y), "(今日无日程)", fill=120, font=font_small)
@@ -293,8 +297,10 @@ def _render_three_day_view(draw, now, font_tiny, font_small, font_medium, font_t
         for ev in day_events[:MAX_EVS]:
             t = ev.get("time", "")[:5]
             title = ev.get("title", "")[:18]
-            line = f"{t} {title}" if t else f"  {title}"
-            fill = 0 if is_today else 50
+            completed = ev.get("completed", False)
+            box = "■" if completed else "□"
+            line = f"{t} {box}{title}" if t else f"  {box}{title}"
+            fill = 150 if completed else (0 if is_today else 50)
             draw.text((x + 1, y), line, fill=fill, font=font_tiny)
             y += EV_H
         if not day_events:
@@ -312,7 +318,8 @@ def _render_todo_view(draw, now, font_small, font_medium):
     """待办视图：未完成 + 优先级"""
     draw.text((30, 20), "待办清单", fill=0, font=font_medium)
 
-    all_events = get_all_events()
+    today = now.strftime("%Y-%m-%d")
+    all_events = get_events_in_range(today, today)
     todos = [e for e in all_events if e.get("type") in ("todo", "habit") and not e.get("completed")]
     todos.sort(key=lambda e: (
         0 if e.get("importance") == "important" and e.get("urgency") == "urgent" else
@@ -322,6 +329,7 @@ def _render_todo_view(draw, now, font_small, font_medium):
 
     y = 70
     for ev in todos[:12]:
+        box = "□"
         imp = ev.get("importance", "not_important")
         urg = ev.get("urgency", "not_urgent")
         if imp == "important" and urg == "urgent":
@@ -332,9 +340,9 @@ def _render_todo_view(draw, now, font_small, font_medium):
             p_mark = "Q3"
         else:
             p_mark = "Q4"
-        title = ev.get("title", "")[:18]
+        title = ev.get("title", "")[:16]
         date = ev.get("date", "")[5:]
-        line = f"[{p_mark}] {date} {title}"
+        line = f"[{p_mark}] {date} {box} {title}"
         fill = 0 if imp == "important" and urg == "urgent" else (30 if imp == "important" else (60 if urg == "urgent" else 120))
         draw.text((30, y), line, fill=fill, font=font_small)
         y += 28

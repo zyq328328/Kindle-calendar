@@ -217,8 +217,11 @@ def render_day_or_home_view(draw, date_str, events, content_x, is_home=False):
         for ev, depth in todos_raw:
             indent = depth * 20
             title = ev.get("title", "")[:16]
-            draw.text((content_x + 30 + indent, y), "□", font=font_small, fill=80)
-            draw.text((content_x + 52 + indent, y), title, font=font_small, fill=0)
+            box = "■" if ev.get("completed") else "□"
+            box_fill = 120 if ev.get("completed") else 80
+            title_fill = 150 if ev.get("completed") else 0
+            draw.text((content_x + 30 + indent, y), box, font=font_small, fill=box_fill)
+            draw.text((content_x + 52 + indent, y), title, font=font_small, fill=title_fill)
             y += 25
 
 def render_home_view(draw, events, content_x):
@@ -302,8 +305,11 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
             for ev, depth in todo_raw:
                 indent = depth * 12
                 title = ev.get("title", "")[:11]
-                draw.text((x + 3 + indent, y), "□", font=font_small, fill=80)
-                draw.text((x + 18 + indent, y), title, font=font_small, fill=0)
+                box = "■" if ev.get("completed") else "□"
+                box_fill = 120 if ev.get("completed") else 80
+                title_fill = 150 if ev.get("completed") else 0
+                draw.text((x + 3 + indent, y), box, font=font_small, fill=box_fill)
+                draw.text((x + 18 + indent, y), title, font=font_small, fill=title_fill)
                 y += TODO_H
         
         # Column separator
@@ -345,9 +351,11 @@ def render_todo_view(draw, events, content_x):
         indent = depth * 20
         title = ev.get("title", "")[:16]
         completed = ev.get("completed", False)
-        fill_color = 150 if completed else 0
-        draw.text((content_x + 20 + indent, y), "□", font=font_small, fill=80)
-        draw.text((content_x + 42 + indent, y), title, font=font_small, fill=fill_color)
+        box = "■" if completed else "□"
+        box_fill = 120 if completed else 80
+        title_fill = 150 if completed else 0
+        draw.text((content_x + 20 + indent, y), box, font=font_small, fill=box_fill)
+        draw.text((content_x + 42 + indent, y), title, font=font_small, fill=title_fill)
         y += 28
 
 QUADRANT_LABELS = [
@@ -397,8 +405,12 @@ def render_quadrant_view(draw, events, content_x):
             for ev, depth in quad_events:
                 indent = depth * 12
                 title = ev.get("title", "")[:14]
-                draw.text((x + 10 + indent, event_y), "□", font=font_small, fill=80)
-                draw.text((x + 22 + indent, event_y), title, font=font_small, fill=0)
+                completed = ev.get("completed", False)
+                box = "■" if completed else "□"
+                box_fill = 120 if completed else 80
+                title_fill = 150 if completed else 0
+                draw.text((x + 10 + indent, event_y), box, font=font_small, fill=box_fill)
+                draw.text((x + 22 + indent, event_y), title, font=font_small, fill=title_fill)
                 event_y += 24
 
 def render_settings_view(draw, content_x):
