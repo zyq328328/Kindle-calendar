@@ -105,7 +105,7 @@ def checkin_habit(event_id: int, date: str = None):
         raise HTTPException(status_code=400, detail="Not a habit")
     
     today = date or datetime.now().strftime("%Y-%m-%d")
-    update_event(event_id, {"last_completed_date": today, "completed": True})
+    update_event(event_id, {"last_completed_date": today})
     return {"status": "checked_in", "event_id": event_id, "date": today}
 
 @app.get("/api/sync", response_model=SyncResponse)
