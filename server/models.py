@@ -1,17 +1,21 @@
 from pydantic import BaseModel
-from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional
 
 class EventBase(BaseModel):
     title: str
     description: Optional[str] = ""
     date: str  # YYYY-MM-DD
     time: Optional[str] = None  # HH:MM
-    priority: Literal["urgent", "important", "normal"] = "normal"
+    type: str = "schedule"  # schedule, todo, habit
+    importance: str = "not_important"  # important, not_important
+    urgency: str = "not_urgent"  # urgent, not_urgent
     is_countdown: bool = False
-    countdown_target: Optional[str] = None  # YYYY-MM-DD for countdown events
+    countdown_target: Optional[str] = None
     completed: bool = False
-    updated_at: Optional[str] = None
+    recurrence_rule: str = "none"  # none, daily, weekdays, weekly, monthly
+    start_date: Optional[str] = None
+    last_completed_date: Optional[str] = None
+    parent_id: Optional[int] = None
 
 class EventCreate(EventBase):
     pass
@@ -21,10 +25,16 @@ class EventUpdate(BaseModel):
     description: Optional[str] = None
     date: Optional[str] = None
     time: Optional[str] = None
-    priority: Optional[Literal["urgent", "important", "normal"]] = None
+    type: Optional[str] = None
+    importance: Optional[str] = None
+    urgency: Optional[str] = None
     is_countdown: Optional[bool] = None
     countdown_target: Optional[str] = None
     completed: Optional[bool] = None
+    recurrence_rule: Optional[str] = None
+    start_date: Optional[str] = None
+    last_completed_date: Optional[str] = None
+    parent_id: Optional[int] = None
 
 class Event(EventBase):
     id: int

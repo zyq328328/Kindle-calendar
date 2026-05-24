@@ -11,7 +11,6 @@ from database import (
 
 app = FastAPI(title="Kindle Calendar API", version="1.0.0")
 
-# Enable CORS for all origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,14 +27,34 @@ def root():
 def health():
     return {"status": "healthy", "server_time": get_server_time()}
 
+def build_tree(events):
+    """Build a tree structure from flat event list based on parent_id"""
+    lookup = {e['id']: {**e, 'children': []} for e in events}
+    roots = []
+    for e in events:
+        parent_id = e.get('parent_id')
+        if parent_id and parent_id in lookup:
+            lookup[parent_id]['children'].append(lookup[e['id']])
+        else:
+            roots.append(lookup[e['id']])
+    return roots
+
 @app.get("/api/events", response_model=list[Event])
 def list_events():
     events = get_all_events()
-    # Convert sqlite row to serializable dict
     for e in events:
-        e["is_countdown"] = bool(e["is_countdown"])
-        e["completed"] = bool(e["completed"])
+        e["is_countdown"] = bool(e.get("is_countdown", False))
+        e["completed"] = bool(e.get("completed", False))
     return events
+
+@app.get("/api/events/tree")
+def events_tree():
+    """Return events in tree structure"""
+    events = get_all_events()
+    for e in events:
+        e["is_countdown"] = bool(e.get("is_countdown", False))
+        e["completed"] = bool(e.get("completed", False))
+    return build_tree(events)
 
 @app.post("/api/events", response_model=Event, status_code=201)
 def create(event: EventCreate):
@@ -76,6 +95,19 @@ def remove_event(event_id: int):
         raise HTTPException(status_code=404, detail="Event not found")
     return {"status": "deleted", "id": event_id}
 
+@app.post("/api/habits/{event_id}/checkin")
+def checkin_habit(event_id: int, date: str = None):
+    """Mark a habit as completed for a specific date"""
+    event = get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if event.get("type") != "habit":
+        raise HTTPException(status_code=400, detail="Not a habit")
+    
+    today = date or datetime.now().strftime("%Y-%m-%d")
+    update_event(event_id, {"last_completed_date": today, "completed": True})
+    return {"status": "checked_in", "event_id": event_id, "date": today}
+
 @app.get("/api/sync", response_model=SyncResponse)
 def sync(since: Optional[str] = None):
     if since:
@@ -84,8 +116,8 @@ def sync(since: Optional[str] = None):
         events = get_all_events()
 
     for e in events:
-        e["is_countdown"] = bool(e["is_countdown"])
-        e["completed"] = bool(e["completed"])
+        e["is_countdown"] = bool(e.get("is_countdown", False))
+        e["completed"] = bool(e.get("completed", False))
 
     return SyncResponse(
         events=events,
@@ -94,4 +126,4 @@ def sync(since: Optional[str] = None):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8082)

@@ -24,14 +24,49 @@ def init_db():
                 description TEXT DEFAULT '',
                 date TEXT NOT NULL,
                 time TEXT,
-                priority TEXT DEFAULT 'normal',
+                type TEXT DEFAULT 'schedule',
+                importance TEXT DEFAULT 'not_important',
+                urgency TEXT DEFAULT 'not_urgent',
                 is_countdown INTEGER DEFAULT 0,
                 countdown_target TEXT,
                 completed INTEGER DEFAULT 0,
+                recurrence_rule TEXT DEFAULT 'none',
+                start_date TEXT,
+                last_completed_date TEXT,
+                parent_id INTEGER,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
         """)
+        # Add missing columns if they don't exist (for database migration)
+        try:
+            c.execute("ALTER TABLE events ADD COLUMN importance TEXT DEFAULT 'not_important'")
+        except:
+            pass
+        try:
+            c.execute("ALTER TABLE events ADD COLUMN urgency TEXT DEFAULT 'not_urgent'")
+        except:
+            pass
+        try:
+            c.execute("ALTER TABLE events ADD COLUMN type TEXT DEFAULT 'schedule'")
+        except:
+            pass
+        try:
+            c.execute("ALTER TABLE events ADD COLUMN recurrence_rule TEXT DEFAULT 'none'")
+        except:
+            pass
+        try:
+            c.execute("ALTER TABLE events ADD COLUMN start_date TEXT")
+        except:
+            pass
+        try:
+            c.execute("ALTER TABLE events ADD COLUMN last_completed_date TEXT")
+        except:
+            pass
+        try:
+            c.execute("ALTER TABLE events ADD COLUMN parent_id INTEGER")
+        except:
+            pass
         conn.commit()
 
 def get_all_events() -> list[dict]:
@@ -60,17 +95,23 @@ def create_event(event_data: dict) -> dict:
     with get_db() as conn:
         c = conn.cursor()
         c.execute("""
-            INSERT INTO events (title, description, date, time, priority, is_countdown, countdown_target, completed, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO events (title, description, date, time, type, importance, urgency, is_countdown, countdown_target, completed, recurrence_rule, start_date, last_completed_date, parent_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             event_data["title"],
             event_data.get("description", ""),
             event_data["date"],
             event_data.get("time"),
-            event_data.get("priority", "normal"),
+            event_data.get("type", "schedule"),
+            event_data.get("importance", "not_important"),
+            event_data.get("urgency", "not_urgent"),
             int(event_data.get("is_countdown", False)),
             event_data.get("countdown_target"),
             int(event_data.get("completed", False)),
+            event_data.get("recurrence_rule", "none"),
+            event_data.get("start_date"),
+            event_data.get("last_completed_date"),
+            event_data.get("parent_id"),
             now,
             now
         ))
@@ -82,7 +123,7 @@ def update_event(event_id: int, event_data: dict) -> Optional[dict]:
     updates = []
     values = []
 
-    for key in ["title", "description", "date", "time", "priority", "is_countdown", "countdown_target", "completed"]:
+    for key in ["title", "description", "date", "time", "type", "importance", "urgency", "is_countdown", "countdown_target", "completed", "recurrence_rule", "start_date", "last_completed_date", "parent_id"]:
         if key in event_data:
             updates.append(f"{key} = ?")
             if key in ["is_countdown", "completed"]:
