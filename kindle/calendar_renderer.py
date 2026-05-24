@@ -293,7 +293,7 @@ def group_events_by_date(events, center_date):
 def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, content_w=None):
     """Three-day view: 3 columns of date + schedule"""
     font_date = make_font(22)
-    font_small = make_font(20)
+    font_small = make_font(18)
     font_section = make_font(20)
     
     if content_w is None:
