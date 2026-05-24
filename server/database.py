@@ -136,12 +136,24 @@ def get_event_tree() -> list[dict]:
     end = (today + datetime.timedelta(days=270)).isoformat()
     # 用 get_events_in_range 展开重复规则
     all_events = get_events_in_range(start, end)
-    # 按 id 去重（expand_recurrence 产生了多条同 id 记录），保留第一条（start_date 最近的原始日期）
+    
+    # 确保子事件使用自己的日期范围，不继承父事件
+    for ev in all_events:
+        if ev.get("parent_id"):
+            # 子事件：确保使用自己的日期字段
+            ev_date = ev.get("date", "")
+            ev_start = ev.get("start_date") or ev_date
+            ev_end = ev.get("end_date") or ev_start
+            ev["start_date"] = ev_start
+            ev["end_date"] = ev_end
+    
+    # 按 id 去重（expand_recurrence 产生了多条同 id 记录），保留第一条
     unique_events = {}
     for ev in all_events:
         if ev["id"] not in unique_events:
             unique_events[ev["id"]] = ev
     all_events = list(unique_events.values())
+    
     # 构建 parent_id -> children 映射
     children_map = {}
     for ev in all_events:
@@ -150,9 +162,11 @@ def get_event_tree() -> list[dict]:
             if pid not in children_map:
                 children_map[pid] = []
             children_map[pid].append(ev)
+    
     # 给每个事件附加 children
     for ev in all_events:
         ev["children"] = children_map.get(ev["id"], [])
+    
     # 返回顶级任务（无 parent_id）
     return [ev for ev in all_events if ev.get("parent_id") is None]
 
@@ -294,6 +308,7 @@ def get_events_in_range(start_date: str, end_date: str) -> list[dict]:
             result.extend(expand_recurrence(ev, start_date, end_date))
         else:
             ev_date = ev.get("date", "")
+            # 子项使用自己的start_date/end_date，如果没有则使用date字段
             ev_start = ev.get("start_date") or ev_date
             ev_end = ev.get("end_date") or ev_start
             

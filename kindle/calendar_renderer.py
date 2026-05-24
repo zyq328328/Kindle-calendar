@@ -78,6 +78,11 @@ def _event_matches_date(ev, date_key):
     display_dates = ev.get("display_dates", [])
     if display_dates and date_key in display_dates:
         return True
+    # 对于子项或有 start_date/end_date 的事件，检查日期范围
+    ev_start = ev.get("start_date")
+    ev_end = ev.get("end_date")
+    if ev_start and ev_end:
+        return ev_start <= date_key <= ev_end
     return False
 
 
@@ -93,9 +98,10 @@ def _is_event_completed(ev, all_events):
     if not ev_id:
         return False
     
+    # 对于子项或没有display_dates的事件，只检查自身的completed状态
     display_dates = ev.get("display_dates", [])
     if not display_dates:
-        return False
+        return ev.get("completed", False)
     
     # 查找同ID的其他事件实例
     for other_ev in all_events:
