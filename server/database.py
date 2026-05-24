@@ -296,9 +296,34 @@ def get_events_in_range(start_date: str, end_date: str) -> list[dict]:
             ev_date = ev.get("date", "")
             ev_start = ev.get("start_date") or ev_date
             ev_end = ev.get("end_date") or ev_start
+            
             # 区间重叠判断：查询范围 [start_date, end_date] 与事件区间 [ev_start, ev_end] 有无交集
             if max(start_date, ev_start) <= min(end_date, ev_end):
-                result.append(ev)
+                # 如果事件有 start_date 和 end_date，展开到每个日期
+                if ev_start != ev_end:
+                    # 生成所有应该显示的日期
+                    start_dt = datetime.strptime(ev_start, "%Y-%m-%d")
+                    end_dt = datetime.strptime(ev_end, "%Y-%m-%d")
+                    current_dt = start_dt
+                    all_dates = []
+                    while current_dt <= end_dt:
+                        all_dates.append(current_dt.strftime("%Y-%m-%d"))
+                        current_dt += datetime.timedelta(days=1)
+                    
+                    # 为每个日期创建一个实例，带有完整的 display_dates
+                    query_start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                    query_end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                    current_dt = max(start_dt, query_start_dt)
+                    while current_dt <= min(end_dt, query_end_dt):
+                        date_str = current_dt.strftime("%Y-%m-%d")
+                        ev_copy = ev.copy()
+                        ev_copy["date"] = date_str
+                        ev_copy["display_dates"] = all_dates
+                        result.append(ev_copy)
+                        current_dt += datetime.timedelta(days=1)
+                else:
+                    # 单日事件，直接添加
+                    result.append(ev)
 
     return result
 

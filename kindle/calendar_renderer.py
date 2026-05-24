@@ -81,6 +81,32 @@ def _event_matches_date(ev, date_key):
     return False
 
 
+def _is_event_completed(ev, all_events):
+    """Check if event is completed across all its display dates.
+    For multi-day todos, if completed on any date, it should show as completed on all dates."""
+    # 如果当前事件已标记完成，直接返回True
+    if ev.get("completed"):
+        return True
+    
+    # 检查是否有其他同ID的事件在其他日期被标记为完成
+    ev_id = ev.get("id")
+    if not ev_id:
+        return False
+    
+    display_dates = ev.get("display_dates", [])
+    if not display_dates:
+        return False
+    
+    # 查找同ID的其他事件实例
+    for other_ev in all_events:
+        if isinstance(other_ev, tuple):
+            other_ev = other_ev[0]
+        if other_ev.get("id") == ev_id and other_ev.get("completed"):
+            return True
+    
+    return False
+
+
 def flatten_tree(tree, depth=0):
     """将事件树展平为 (event, depth) 列表，用于带缩进的渲染"""
     result = []
@@ -217,9 +243,11 @@ def render_day_or_home_view(draw, date_str, events, content_x, is_home=False):
         for ev, depth in todos_raw:
             indent = depth * 20
             title = ev.get("title", "")[:16]
-            box = "■" if ev.get("completed") else "□"
-            box_fill = 120 if ev.get("completed") else 80
-            title_fill = 150 if ev.get("completed") else 0
+            # 使用_is_event_completed检查完成状态（支持跨日期完成同步）
+            completed = _is_event_completed(ev, events)
+            box = "■" if completed else "□"
+            box_fill = 120 if completed else 80
+            title_fill = 150 if completed else 0
             draw.text((content_x + 30 + indent, y), box, font=font_small, fill=box_fill)
             draw.text((content_x + 52 + indent, y), title, font=font_small, fill=title_fill)
             y += 25
@@ -305,9 +333,11 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
             for ev, depth in todo_raw:
                 indent = depth * 12
                 title = ev.get("title", "")[:11]
-                box = "■" if ev.get("completed") else "□"
-                box_fill = 120 if ev.get("completed") else 80
-                title_fill = 150 if ev.get("completed") else 0
+                # 使用_is_event_completed检查完成状态（支持跨日期完成同步）
+                completed = _is_event_completed(ev, events)
+                box = "■" if completed else "□"
+                box_fill = 120 if completed else 80
+                title_fill = 150 if completed else 0
                 draw.text((x + 3 + indent, y), box, font=font_small, fill=box_fill)
                 draw.text((x + 18 + indent, y), title, font=font_small, fill=title_fill)
                 y += TODO_H
