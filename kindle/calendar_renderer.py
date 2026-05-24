@@ -293,21 +293,23 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
                 draw.text((x + 3 + indent, y), title, font=font_small, fill=0)
             y += SCHED_H
 
-        # 待办 section（只看未完成的 todo+habit）
+        # 待办 section（显示所有 todo+habit，区分完成状态）
         y += 4
         draw.text((x + 3, y), "【待办】", font=font_section, fill=80)
         y += 30
         TODO_H = 22
-        todo_raw = [(e, d) for e, d in events if e.get("type") in ("todo", "habit") and not e.get("completed")]
+        todo_raw = [(e, d) for e, d in events if e.get("type") in ("todo", "habit")]
         if not todo_raw:
             draw.text((x + 3, y), "□ 暂无待办", font=font_small, fill=140)
         else:
             for ev, depth in todo_raw:
                 indent = depth * 12
                 title = ev.get("title", "")[:11]
-                # All items here are uncompleted
-                draw.text((x + 3 + indent, y), "□", font=font_small, fill=80)
-                draw.text((x + 18 + indent, y), title, font=font_small, fill=0)
+                box = "■" if ev.get("completed") else "□"
+                box_fill = 120 if ev.get("completed") else 80
+                title_fill = 150 if ev.get("completed") else 0
+                draw.text((x + 3 + indent, y), box, font=font_small, fill=box_fill)
+                draw.text((x + 18 + indent, y), title, font=font_small, fill=title_fill)
                 y += TODO_H
         
         # Column separator
