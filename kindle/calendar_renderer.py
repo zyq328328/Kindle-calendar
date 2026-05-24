@@ -74,11 +74,11 @@ def _event_matches_date(ev, date_key):
     ev_date = ev.get("date", "")
     if ev_date.startswith(date_key):
         return True
-    # 对于重复事件，display_dates 包含所有应出现的日期
+    # 对于重复事件，使用 display_dates 判断
     display_dates = ev.get("display_dates", [])
-    if display_dates and date_key in display_dates:
-        return True
-    # 对于子项或有 start_date/end_date 的事件，检查日期范围
+    if display_dates:
+        return date_key in display_dates
+    # 对于非重复但有日期区间的子项（多日待办），检查日期范围
     ev_start = ev.get("start_date")
     ev_end = ev.get("end_date")
     if ev_start and ev_end:
@@ -86,31 +86,38 @@ def _event_matches_date(ev, date_key):
     return False
 
 
-def _is_event_completed(ev, all_events):
-    """Check if event is completed across all its display dates.
-    For multi-day todos, if completed on any date, it should show as completed on all dates."""
-    # 如果当前事件已标记完成，直接返回True
-    if ev.get("completed"):
-        return True
-    
-    # 检查是否有其他同ID的事件在其他日期被标记为完成
-    ev_id = ev.get("id")
-    if not ev_id:
-        return False
-    
-    # 对于子项或没有display_dates的事件，只检查自身的completed状态
-    display_dates = ev.get("display_dates", [])
-    if not display_dates:
+def _is_habit_completed_on_date(ev, date_key):
+    """Check if a habit is completed on a specific date based on last_completed_date.
+
+    For habits, completion is tracked via last_completed_date, not the global 'completed' field.
+    If last_completed_date equals date_key, the habit is completed on that date.
+    """
+    ev_type = ev.get("type")
+    if ev_type != "habit":
         return ev.get("completed", False)
-    
-    # 查找同ID的其他事件实例
-    for other_ev in all_events:
-        if isinstance(other_ev, tuple):
-            other_ev = other_ev[0]
-        if other_ev.get("id") == ev_id and other_ev.get("completed"):
-            return True
-    
-    return False
+
+    last_done = ev.get("last_completed_date", "")
+    if not last_done:
+        return False
+
+    # last_completed_date is the date when user checked in
+    # Check if it matches the target date
+    return last_done == date_key
+
+
+def _is_event_completed(ev, all_events, date_key=None):
+    """Check if event is completed on its display date.
+    date_key: the date being rendered, defaults to ev.get("date")"""
+    ev_type = ev.get("type")
+
+    # 对于 habit，始终使用 last_completed_date 判断（不受全局 completed 影响）
+    if ev_type == "habit":
+        # date_key is the specific date we're checking for completion
+        target_date = date_key if date_key else ev.get("date", "")
+        return _is_habit_completed_on_date(ev, target_date)
+
+    # 非 habit：直接检查 completed 字段
+    return bool(ev.get("completed"))
 
 
 def flatten_tree(tree, depth=0):
@@ -133,7 +140,8 @@ def fetch_events(date_str=None, max_retries=3):
                 tree = json.loads(resp.read().decode())
                 flat = flatten_tree(tree)
                 if date_str:
-                    return [(ev, depth) for ev, depth in flat if ev.get("date", "").startswith(date_str)]
+                    # 使用 _event_matches_date 来正确匹配重复事件（包括 habit）
+                    return [(ev, depth) for ev, depth in flat if _event_matches_date(ev, date_str)]
                 return flat
         except Exception as e:
             print(f"[renderer] fetch attempt {attempt+1} failed: {e}")
@@ -249,8 +257,8 @@ def render_day_or_home_view(draw, date_str, events, content_x, is_home=False):
         for ev, depth in todos_raw:
             indent = depth * 20
             title = ev.get("title", "")[:16]
-            # 使用_is_event_completed检查完成状态（支持跨日期完成同步）
-            completed = _is_event_completed(ev, events)
+            # 使用_is_event_completed检查完成状态，传入date_str确保habit正确判断
+            completed = _is_event_completed(ev, events, date_str)
             box = "■" if completed else "□"
             box_fill = 120 if completed else 80
             title_fill = 150 if completed else 0
@@ -339,8 +347,8 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
             for ev, depth in todo_raw:
                 indent = depth * 12
                 title = ev.get("title", "")[:11]
-                # 使用_is_event_completed检查完成状态（支持跨日期完成同步）
-                completed = _is_event_completed(ev, events)
+                # 使用_is_event_completed检查完成状态，传入date_key确保habit正确判断
+                completed = _is_event_completed(ev, events, date_key)
                 box = "■" if completed else "□"
                 box_fill = 120 if completed else 80
                 title_fill = 150 if completed else 0

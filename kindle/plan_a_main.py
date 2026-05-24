@@ -56,8 +56,21 @@ def rot_coord(x_phys, y_phys):
     return 800 - y_phys, x_phys
 
 
-def mark_event_completed(event_id):
-    """调用API标记事件完成"""
+def mark_habit_completed(event_id, date):
+    """调用习惯打卡API，只标记当天完成"""
+    try:
+        url = f"{SERVER_URL.replace('/api/events', '/api/habits')}/{event_id}/checkin?date={date}"
+        req = urllib.request.Request(url, method="POST")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            print(f"[api] Habit {event_id} checked in for {date}")
+            return True
+    except Exception as e:
+        print(f"[api] Error checking in habit {event_id}: {e}")
+        return False
+
+
+def mark_todo_completed(event_id):
+    """调用API标记待办完成"""
     try:
         url = f"{SERVER_URL}/{event_id}"
         data = json.dumps({"completed": True}).encode("utf-8")
@@ -68,10 +81,10 @@ def mark_event_completed(event_id):
             headers={"Content-Type": "application/json"}
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
-            print(f"[api] Marked event {event_id} as completed")
+            print(f"[api] Marked todo {event_id} as completed")
             return True
     except Exception as e:
-        print(f"[api] Error marking event {event_id} completed: {e}")
+        print(f"[api] Error marking todo {event_id} completed: {e}")
         return False
 
 
@@ -203,8 +216,14 @@ def handle_touch(x_phys, y_phys):
                         print(f"[touch]   Child {j}: title='{child.get('title')}', type='{child.get('type')}', date='{child.get('date')}'")
                 tapped_todo = find_tapped_todo(x_rot, y_rot, tree)
                 if tapped_todo:
-                    print(f"[touch] Tapped todo: {tapped_todo.get('title')}")
-                    if mark_event_completed(tapped_todo["id"]):
+                    print(f"[touch] Tapped todo: {tapped_todo.get('title')}, type={tapped_todo.get('type')}")
+                    today_str = datetime.date.today().isoformat()
+                    ev_type = tapped_todo.get("type")
+                    if ev_type == "habit":
+                        success = mark_habit_completed(tapped_todo["id"], today_str)
+                    else:
+                        success = mark_todo_completed(tapped_todo["id"])
+                    if success:
                         print(f"[touch] Marked as completed, re-rendering")
                         render_current()
                     else:

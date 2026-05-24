@@ -64,7 +64,7 @@
             <button v-if="ev.type === 'habit'" @click="checkin(ev)" :class="{ checked: ev.completed }">
               {{ ev.completed ? '✓ 已打卡' : '打卡' }}
             </button>
-            <button @click="toggleDone(ev)" :class="{ done: ev.completed }">{{ ev.completed ? '取消完成' : '完成' }}</button>
+            <button v-else-if="ev.type !== 'schedule'" @click="toggleDone(ev)" :class="{ done: ev.completed }">{{ ev.completed ? '取消完成' : '完成' }}</button>
             <button @click="openEdit(ev)">编辑</button>
             <button @click="remove(ev.id)" class="del">删除</button>
           </div>

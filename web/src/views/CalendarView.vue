@@ -95,9 +95,11 @@
                     <button v-if="child.type === 'habit'" @click="checkin(child)" :class="{ checked: child.completed }">
                       {{ child.completed ? '✓ 已打卡' : '打卡' }}
                     </button>
-                    <button @click="toggleDone(child)">{{ child.completed ? '取消' : '完成' }}</button>
-                    <button @click="openEdit(child)">编辑</button>
-                    <button @click="remove(child.id)" class="del">删除</button>
+                    <button v-else-if="child.type !== 'schedule'" @click="toggleDone(child)">{{ child.completed ? '取消' : '完成' }}</button>
+                    <template v-if="child.type !== 'schedule'">
+                      <button @click="openEdit(child)">编辑</button>
+                      <button @click="remove(child.id)" class="del">删除</button>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -106,9 +108,11 @@
               <button v-if="ev.type === 'habit'" @click="checkin(ev)" :class="{ checked: ev.completed }">
                 {{ ev.completed ? '✓ 已打卡' : '打卡' }}
               </button>
-              <button @click="toggleDone(ev)">{{ ev.completed ? '取消' : '完成' }}</button>
-              <button @click="openEdit(ev)">编辑</button>
-              <button @click="remove(ev.id)" class="del">删除</button>
+              <button v-else-if="ev.type !== 'schedule'" @click="toggleDone(ev)">{{ ev.completed ? '取消' : '完成' }}</button>
+              <template v-if="ev.type !== 'schedule'">
+                <button @click="openEdit(ev)">编辑</button>
+                <button @click="remove(ev.id)" class="del">删除</button>
+              </template>
             </div>
           </div>
         </template>

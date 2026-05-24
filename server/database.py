@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from contextlib import contextmanager
 from typing import Optional
 
@@ -89,7 +89,15 @@ def create_event(event_data: dict) -> dict:
             now
         ))
         conn.commit()
-        return get_event_by_id(c.lastrowid)
+        new_event = get_event_by_id(c.lastrowid)
+
+        # 如果是子任务且父任务已完成的，新增子任务后自动取消父任务完成状态
+        if new_event and new_event.get("parent_id"):
+            parent = get_event_by_id(new_event["parent_id"])
+            if parent and parent.get("completed"):
+                update_event(parent["id"], {"completed": False})
+
+        return new_event
 
 def update_event(event_id: int, event_data: dict) -> Optional[dict]:
     now = datetime.now().isoformat()
@@ -107,11 +115,24 @@ def update_event(event_id: int, event_data: dict) -> Optional[dict]:
     updates.append("updated_at = ?")
     values.append(now)
     values.append(event_id)
+
+    # 记录更新前的状态（用于判断 completion 是否变化）
+    old_event = get_event_by_id(event_id)
+    old_completed = old_event.get("completed", False) if old_event else False
+
     with get_db() as conn:
         c = conn.cursor()
         c.execute(f"UPDATE events SET {', '.join(updates)} WHERE id = ?", values)
         conn.commit()
-        return get_event_by_id(event_id)
+        updated = get_event_by_id(event_id)
+
+    # 如果 completion 状态发生变化，检查是否需要联动父任务
+    if "completed" in event_data:
+        new_completed = event_data["completed"]
+        if old_completed != new_completed:
+            _check_and_update_parent_completion(event_id)
+
+    return updated
 
 def delete_event(event_id: int) -> bool:
     with get_db() as conn:
@@ -128,12 +149,62 @@ def get_children(parent_id: int) -> list[dict]:
         rows = c.fetchall()
         return [dict(row) for row in rows]
 
+
+def _are_all_dates_completed(ev: dict) -> bool:
+    """检查多日任务是否在所有日期都完成了"""
+    ev_type = ev.get("type")
+
+    if ev_type == "habit":
+        # 习惯：每次打卡只影响那一天，不存在"全部完成"的概念
+        # 返回 False 表示习惯不能触发父任务自动完成
+        return False
+
+    if ev.get("recurrence_rule", "none") != "none":
+        # 重复任务：检查 display_dates 中每个日期是否都有完成记录
+        display_dates = ev.get("display_dates", [])
+        if not display_dates:
+            return bool(ev.get("completed"))
+        # 对于 todo 多日任务，需要每个日期都单独完成
+        # 这里简化处理：只要 completed=True 就认为全部完成
+        return bool(ev.get("completed"))
+    else:
+        # 非重复任务：直接检查 completed
+        return bool(ev.get("completed"))
+
+
+def _check_and_update_parent_completion(child_id: int):
+    """当子任务状态变化时，检查是否需要自动完成/取消父任务"""
+    child = get_event_by_id(child_id)
+    if not child or not child.get("parent_id"):
+        return
+
+    parent_id = child["parent_id"]
+    children = get_children(parent_id)
+
+    if not children:
+        return
+
+    # 检查是否所有子任务都完成
+    all_completed = all(_are_all_dates_completed(c) for c in children)
+
+    parent = get_event_by_id(parent_id)
+    if not parent:
+        return
+
+    if all_completed:
+        # 所有子任务完成，自动完成父任务
+        if not parent.get("completed"):
+            update_event(parent_id, {"completed": True})
+    else:
+        # 有子任务未完成，自动取消父任务完成状态
+        if parent.get("completed"):
+            update_event(parent_id, {"completed": False})
+
 def get_event_tree() -> list[dict]:
     """获取扁平化的事件列表，每个事件带 children 字段（含子任务），重复事件自动展开"""
-    import datetime
-    today = datetime.date.today()
-    start = (today - datetime.timedelta(days=90)).isoformat()
-    end = (today + datetime.timedelta(days=270)).isoformat()
+    today = datetime.now().date()
+    start = (today - timedelta(days=90)).isoformat()
+    end = (today + timedelta(days=270)).isoformat()
     # 用 get_events_in_range 展开重复规则
     all_events = get_events_in_range(start, end)
     
@@ -283,14 +354,9 @@ def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]
         occ = dict(habit)
         occ["date"] = cur.strftime("%Y-%m-%d")
         occ["display_dates"] = all_dates
-        last_done = habit.get("last_completed_date")
-        hs = habit.get("start_date", "")
-        he = habit.get("end_date", "")
-        # 阶段任务语义：last_done 在区间内，则整个区间所有日期都显示完成
-        if last_done and hs and he:
-            occ["completed"] = bool(habit.get("completed")) and (hs <= last_done <= he)
-        else:
-            occ["completed"] = bool(habit.get("completed")) and last_done and last_done == cur.strftime("%Y-%m-%d")
+        # 习惯完成判断：只检查 last_completed_date 是否等于当前日期（与 completed 全局字段无关）
+        last_done = habit.get("last_completed_date", "")
+        occ["completed"] = last_done and last_done == cur.strftime("%Y-%m-%d")
         occ["is_countdown"] = bool(occ.get("is_countdown"))
         occurrences.append(occ)
         cur = _next(cur, rule)
@@ -323,7 +389,7 @@ def get_events_in_range(start_date: str, end_date: str) -> list[dict]:
                     all_dates = []
                     while current_dt <= end_dt:
                         all_dates.append(current_dt.strftime("%Y-%m-%d"))
-                        current_dt += datetime.timedelta(days=1)
+                        current_dt += timedelta(days=1)
                     
                     # 为每个日期创建一个实例，带有完整的 display_dates
                     query_start_dt = datetime.strptime(start_date, "%Y-%m-%d")
@@ -335,7 +401,7 @@ def get_events_in_range(start_date: str, end_date: str) -> list[dict]:
                         ev_copy["date"] = date_str
                         ev_copy["display_dates"] = all_dates
                         result.append(ev_copy)
-                        current_dt += datetime.timedelta(days=1)
+                        current_dt += timedelta(days=1)
                 else:
                     # 单日事件，直接添加
                     result.append(ev)
