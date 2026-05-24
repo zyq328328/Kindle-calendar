@@ -293,23 +293,21 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
                 draw.text((x + 3 + indent, y), title, font=font_small, fill=0)
             y += SCHED_H
 
-        # 待办 section（只看 todo+habit）
+        # 待办 section（只看未完成的 todo+habit）
         y += 4
         draw.text((x + 3, y), "【待办】", font=font_section, fill=80)
         y += 30
         TODO_H = 22
-        todo_raw = [(e, d) for e, d in events if e.get("type") in ("todo", "habit")]
+        todo_raw = [(e, d) for e, d in events if e.get("type") in ("todo", "habit") and not e.get("completed")]
         if not todo_raw:
             draw.text((x + 3, y), "□ 暂无待办", font=font_small, fill=140)
         else:
             for ev, depth in todo_raw:
                 indent = depth * 12
                 title = ev.get("title", "")[:11]
-                box = "■" if ev.get("completed") else "□"
-                box_fill = 120 if ev.get("completed") else 80
-                title_fill = 150 if ev.get("completed") else 0
-                draw.text((x + 3 + indent, y), box, font=font_small, fill=box_fill)
-                draw.text((x + 18 + indent, y), title, font=font_small, fill=title_fill)
+                # All items here are uncompleted
+                draw.text((x + 3 + indent, y), "□", font=font_small, fill=80)
+                draw.text((x + 18 + indent, y), title, font=font_small, fill=0)
                 y += TODO_H
         
         # Column separator
@@ -320,7 +318,7 @@ def render_three_day_view(draw, date_str, events_by_date, content_x=LEFT_W, cont
         x += col_w
 
 def render_todo_view(draw, events, content_x):
-    """Todo list view"""
+    """Todo list view - only show uncompleted todos"""
     font_title = make_font(24)
     font_small = make_font(20)
     
@@ -328,12 +326,13 @@ def render_todo_view(draw, events, content_x):
     draw.text((content_x + 20, y), "待办列表", font=font_title, fill=0)
     y += 40
     
-    # Support both flat [event] and tree [(event, depth)]
-    raw = events
-    if raw and isinstance(raw[0], tuple):
-        ev_list = [(e, depth) for e, depth in raw if e.get("type") in ("todo", "habit")]
+    # Support both flat [event] and tree [(event, depth)], filter out completed
+    if events and isinstance(events[0], tuple):
+        ev_list = [(e, depth) for e, depth in events 
+                  if e.get("type") in ("todo", "habit") and not e.get("completed")]
     else:
-        ev_list = [(e, 0) for e in raw if e.get("type") in ("todo", "habit")]
+        ev_list = [(e, 0) for e in events 
+                  if e.get("type") in ("todo", "habit") and not e.get("completed")]
     
     def sort_key(item):
         ev, depth = item
@@ -350,12 +349,9 @@ def render_todo_view(draw, events, content_x):
     for ev, depth in ev_list:
         indent = depth * 20
         title = ev.get("title", "")[:16]
-        completed = ev.get("completed", False)
-        box = "■" if completed else "□"
-        box_fill = 120 if completed else 80
-        title_fill = 150 if completed else 0
-        draw.text((content_x + 20 + indent, y), box, font=font_small, fill=box_fill)
-        draw.text((content_x + 42 + indent, y), title, font=font_small, fill=title_fill)
+        # All items here are uncompleted
+        draw.text((content_x + 20 + indent, y), "□", font=font_small, fill=80)
+        draw.text((content_x + 42 + indent, y), title, font=font_small, fill=0)
         y += 28
 
 QUADRANT_LABELS = [
@@ -366,7 +362,7 @@ QUADRANT_LABELS = [
 ]
 
 def render_quadrant_view(draw, events, content_x):
-    """Four quadrant view - only todo and habit"""
+    """Four quadrant view - only todo and habit, filter out completed"""
     font_title = make_font(20)
     font_small = make_font(18)
     
@@ -374,11 +370,13 @@ def render_quadrant_view(draw, events, content_x):
     col_w = content_w // 2
     row_h = H // 2
     
-    # Filter: only todo and habit (support both flat and tree format), keep depth
+    # Filter: only todo and habit, exclude completed (support both flat and tree format)
     if events and isinstance(events[0], tuple):
-        todo_events = [(e, depth) for e, depth in events if e.get("type") in ("todo", "habit")]
+        todo_events = [(e, depth) for e, depth in events 
+                      if e.get("type") in ("todo", "habit") and not e.get("completed")]
     else:
-        todo_events = [(e, 0) for e in events if e.get("type") in ("todo", "habit")]
+        todo_events = [(e, 0) for e in events 
+                      if e.get("type") in ("todo", "habit") and not e.get("completed")]
 
     # Draw quadrant separators
     mid_x = content_x + col_w
@@ -405,12 +403,9 @@ def render_quadrant_view(draw, events, content_x):
             for ev, depth in quad_events:
                 indent = depth * 12
                 title = ev.get("title", "")[:14]
-                completed = ev.get("completed", False)
-                box = "■" if completed else "□"
-                box_fill = 120 if completed else 80
-                title_fill = 150 if completed else 0
-                draw.text((x + 10 + indent, event_y), box, font=font_small, fill=box_fill)
-                draw.text((x + 22 + indent, event_y), title, font=font_small, fill=title_fill)
+                # All items here are uncompleted
+                draw.text((x + 10 + indent, event_y), "□", font=font_small, fill=80)
+                draw.text((x + 22 + indent, event_y), title, font=font_small, fill=0)
                 event_y += 24
 
 def render_settings_view(draw, content_x):
