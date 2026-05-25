@@ -201,45 +201,47 @@ def _check_and_update_parent_completion(child_id: int):
             update_event(parent_id, {"completed": False})
 
 def get_event_tree() -> list[dict]:
-    """获取扁平化的事件列表，每个事件带 children 字段（含子任务），重复事件自动展开"""
+    """获取事件树：顶级任务 + 嵌套的 children（含缩进层级）
+    重复事件（习惯）返回多个 occurrence，按日期分组的树结构
+    """
     today = datetime.now().date()
     start = (today - timedelta(days=90)).isoformat()
     end = (today + timedelta(days=270)).isoformat()
     # 用 get_events_in_range 展开重复规则
     all_events = get_events_in_range(start, end)
-    
-    # 确保子事件使用自己的日期范围，不继承父事件
+
+    # 按日期分组，同一 id 的不同日期 occurrence 分组
+    date_groups = {}  # {id: {date: event}}
     for ev in all_events:
-        if ev.get("parent_id"):
-            # 子事件：确保使用自己的日期字段
-            ev_date = ev.get("date", "")
-            ev_start = ev.get("start_date") or ev_date
-            ev_end = ev.get("end_date") or ev_start
-            ev["start_date"] = ev_start
-            ev["end_date"] = ev_end
-    
-    # 按 id 去重（expand_recurrence 产生了多条同 id 记录），保留第一条
-    unique_events = {}
-    for ev in all_events:
-        if ev["id"] not in unique_events:
-            unique_events[ev["id"]] = ev
-    all_events = list(unique_events.values())
-    
-    # 构建 parent_id -> children 映射
-    children_map = {}
+        ev_id = ev["id"]
+        ev_date = ev.get("date", "")
+        if ev_id not in date_groups:
+            date_groups[ev_id] = {}
+        date_groups[ev_id][ev_date] = ev
+
+    # 构建 parent_id -> children 映射（按日期区分）
+    children_map = {}  # {(parent_id, date): [events]}
+    root_events = []  # [(event, date)]
+
     for ev in all_events:
         pid = ev.get("parent_id")
+        ev_date = ev.get("date", "")
+
         if pid is not None:
-            if pid not in children_map:
-                children_map[pid] = []
-            children_map[pid].append(ev)
-    
-    # 给每个事件附加 children
+            key = (pid, ev_date)
+            if key not in children_map:
+                children_map[key] = []
+            children_map[key].append(ev)
+        else:
+            root_events.append((ev, ev_date))
+
+    # 给每个事件附加 children（按日期匹配）
     for ev in all_events:
-        ev["children"] = children_map.get(ev["id"], [])
-    
-    # 返回顶级任务（无 parent_id）
-    return [ev for ev in all_events if ev.get("parent_id") is None]
+        key = (ev["id"], ev.get("date", ""))
+        ev["children"] = children_map.get(key, [])
+
+    # 返回顶级任务（无 parent_id），每个日期的 occurrence 单独作为一个节点
+    return [ev for ev, _ in root_events]
 
 def migrate_add_missing_columns():
     """为已有表添加新字段"""
