@@ -14,11 +14,12 @@ import threading
 import urllib.request
 import urllib.parse
 import json
+from PIL import Image, ImageDraw
 
 BASE = "/mnt/us/extensions/KindleCalendar/bin"
 sys.path.insert(0, BASE)
 from touch_input import wait_for_touch
-from calendar_renderer import render_frame, fetch_events, touch_to_view, W, RIGHT_W, LEFT_W, flatten_tree, _event_matches_date
+from calendar_renderer import render_frame, fetch_events, touch_to_view, W, H, RIGHT_W, LEFT_W, flatten_tree, _event_matches_date, _is_event_completed, render_confirm_view, render_calibration_view
 from eink_display import show_image_full, show_image_partial
 
 SERVER_URL = "http://192.168.10.7:8082/api/events"
@@ -28,6 +29,14 @@ current_date = datetime.date.today()
 IMG_PATH = "/tmp/calendar_frame.png"
 auto_refresh_enabled = False
 auto_refresh_thread = None
+
+# 确认页面状态（用于取消完成的确认）
+# None 或 {"event_id": int, "event_type": str, "date": str, "event_title": str}
+confirm_state = None
+
+# 触屏校准状态
+# None 或 {"phase": int, "points": [(x_phys, y_phys), ...], "dot_positions": [(x_rot, y_rot), ...]}
+calibration_state = None
 
 
 def restore_kindle():
@@ -52,8 +61,11 @@ def rot_coord(x_phys, y_phys):
     """
     物理600x800 → 渲染800x600
     逆时针90°旋转：x_render = 800 - y_phys, y_render = x_phys
+    加入校准偏移修正
     """
-    return 800 - y_phys, x_phys
+    offset_x = 3   # X偏移修正
+    offset_y = -22  # Y偏移修正
+    return 800 - y_phys + offset_x, x_phys + offset_y
 
 
 def mark_habit_completed(event_id, date):
@@ -88,6 +100,38 @@ def mark_todo_completed(event_id):
         return False
 
 
+def uncheck_habit(event_id, date):
+    """调用API取消习惯打卡"""
+    try:
+        url = f"{SERVER_URL.replace('/api/events', '/api/habits')}/{event_id}/uncheck?date={date}"
+        req = urllib.request.Request(url, method="POST")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            print(f"[api] Habit {event_id} unchecked for {date}")
+            return True
+    except Exception as e:
+        print(f"[api] Error unchecking habit {event_id}: {e}")
+        return False
+
+
+def uncheck_todo(event_id):
+    """调用API取消待办完成"""
+    try:
+        url = f"{SERVER_URL}/{event_id}"
+        data = json.dumps({"completed": False}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            method="PUT",
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            print(f"[api] Marked todo {event_id} as uncompleted")
+            return True
+    except Exception as e:
+        print(f"[api] Error unchecking todo {event_id}: {e}")
+        return False
+
+
 def find_tapped_todo(x_rot, y_rot, events):
     """
     在今日视图中查找被点击的待办项
@@ -115,7 +159,8 @@ def find_tapped_todo(x_rot, y_rot, events):
         ev_date = ev.get("date", "N/A")
         ev_title = ev.get("title", "Untitled")[:20]
         matches = _event_matches_date(ev, today_str)
-        print(f"[find_todo]   Event: type={ev_type}, title='{ev_title}', date='{ev_date}', matches={matches}")
+        ev_completed = ev.get("completed", False)
+        print(f"[find_todo]   Event: type={ev_type}, title='{ev_title}', date='{ev_date}', matches={matches}, completed={ev_completed}")
     
     # 过滤今日的日程项（计算日程占用空间）
     schedules = [(ev, depth) for ev, depth in flat_events 
@@ -174,11 +219,81 @@ def find_tapped_todo(x_rot, y_rot, events):
 
 def handle_touch(x_phys, y_phys):
     """处理触摸"""
-    global current_view, current_date
+    global current_view, current_date, confirm_state, calibration_state
 
     # 转换坐标到渲染坐标系
     x_rot, y_rot = rot_coord(x_phys, y_phys)
     print(f"[touch] phys: ({x_phys}, {y_phys}) -> rot: ({x_rot}, {y_rot})")
+
+    # 处理触屏校准
+    if current_view == "calibration" or calibration_state is not None:
+        state = calibration_state
+        if state is not None:
+            phase = state["phase"]
+            dot_x, dot_y = state["dot_positions"][phase]
+            print(f"[calib] phase={phase}, dot=({dot_x},{dot_y}), touch=({x_rot},{y_rot})")
+            # 检测点击是否在圆点范围内（半径50像素）
+            if abs(x_rot - dot_x) <= 50 and abs(y_rot - dot_y) <= 50:
+                print(f"[calib] Point {phase + 1} tapped!")
+                # 记录物理坐标
+                state["points"].append((x_phys, y_phys))
+                phase += 1
+                if phase >= len(state["dot_positions"]):
+                    # 校准完成，显示结果
+                    print(f"[calib] Calibration done!")
+                    print(f"[calib] Points (phys): {state['points']}")
+                    calibration_state = None
+                    current_view = "calibration_result"
+                    render_current()
+                else:
+                    # 下一轮
+                    state["phase"] = phase
+                    calibration_state = state
+                    render_current()
+            else:
+                print(f"[calib] Missed, try again")
+        return False
+
+    # 处理确认页面
+    if current_view == "confirm" or confirm_state is not None:
+        # 确认页面按钮检测（与 render_confirm_view 一致）
+        # render_confirm_view: y=80 → +50=130 → +60=190, btn_y=190+40=230
+        btn_h = 50
+        btn_w = 140
+        total_w = W
+        gap = 40
+
+        cancel_x = (total_w - 2 * btn_w - gap) // 2
+        confirm_x = cancel_x + btn_w + gap
+        btn_y = 230
+
+        if cancel_x <= x_rot <= cancel_x + btn_w and btn_y <= y_rot <= btn_y + btn_h:
+            # 取消
+            print(f"[touch] Cancel in confirm page, returning to home")
+            confirm_state = None
+            current_view = "home"
+            render_current()
+            return False
+        if confirm_x <= x_rot <= confirm_x + btn_w and btn_y <= y_rot <= btn_y + btn_h:
+            # 确认取消
+            print(f"[touch] Confirm in confirm page, unchecking")
+            ev_type = confirm_state.get("event_type")
+            event_id = confirm_state.get("event_id")
+            date_str = confirm_state.get("date")
+            confirm_state = None
+            if ev_type == "habit":
+                uncheck_habit(event_id, date_str)
+            else:
+                uncheck_todo(event_id)
+            current_view = "home"
+            render_current()
+            return False
+        # 点击按钮区域外 → 取消并返回
+        print(f"[touch] Click outside buttons, dismissing confirm page")
+        confirm_state = None
+        current_view = "home"
+        render_current()
+        return False
 
     # 检查右侧导航栏
     if x_rot >= W - RIGHT_W:
@@ -216,18 +331,46 @@ def handle_touch(x_phys, y_phys):
                         print(f"[touch]   Child {j}: title='{child.get('title')}', type='{child.get('type')}', date='{child.get('date')}'")
                 tapped_todo = find_tapped_todo(x_rot, y_rot, tree)
                 if tapped_todo:
-                    print(f"[touch] Tapped todo: {tapped_todo.get('title')}, type={tapped_todo.get('type')}")
+                    print(f"[touch] Tapped todo: {tapped_todo.get('title')}, type={tapped_todo.get('type')}, id={tapped_todo.get('id')}")
                     today_str = datetime.date.today().isoformat()
                     ev_type = tapped_todo.get("type")
-                    if ev_type == "habit":
-                        success = mark_habit_completed(tapped_todo["id"], today_str)
+                    event_id = tapped_todo["id"]
+
+                    # 检查完成状态（用渲染时的逻辑：直接用 ev.get("completed")）
+                    completed = tapped_todo.get("completed", False)
+                    print(f"[touch] completed={completed}, ev_type={ev_type}")
+
+                    if completed:
+                        # 已完成：直接渲染确认页面
+                        print(f"[touch] Event completed, rendering confirm page")
+                        from PIL import Image as Img
+                        img = Img.new('L', (W, H), 255)
+                        draw = ImageDraw.Draw(img)
+                        # 渲染确认页面
+                        render_confirm_view(draw, [], 0, event_title=tapped_todo.get("title", "未知"))
+                        # 保存并推送
+                        img.save("/tmp/calendar_confirm.png")
+                        show_image_full("/tmp/calendar_confirm.png")
+                        # 切换到确认视图
+                        current_view = "confirm"
+                        confirm_state = {
+                            "event_id": event_id,
+                            "event_type": ev_type,
+                            "date": today_str,
+                            "event_title": tapped_todo.get("title", "未知"),
+                        }
+                        return False
                     else:
-                        success = mark_todo_completed(tapped_todo["id"])
-                    if success:
-                        print(f"[touch] Marked as completed, re-rendering")
-                        render_current()
-                    else:
-                        print(f"[touch] Failed to mark as completed")
+                        # 未完成：标记为完成
+                        if ev_type == "habit":
+                            success = mark_habit_completed(event_id, today_str)
+                        else:
+                            success = mark_todo_completed(event_id)
+                        if success:
+                            print(f"[touch] Marked as completed, re-rendering")
+                            render_current()
+                        else:
+                            print(f"[touch] Failed to mark as completed")
                     return False
                 else:
                     print(f"[touch] No todo tapped at this position")
@@ -241,15 +384,24 @@ def handle_touch(x_phys, y_phys):
 
     # 设置视图中的退出按钮处理
     if current_view == "settings":
-        # 退出日历按钮区域 (假设在内容区顶部)
         content_x = 0  # 设置视图占满左侧
-        button_y_start = 50
-        button_y_end = 80
-        if content_x <= x_rot < W - RIGHT_W and button_y_start <= y_rot <= button_y_end:
-            # 点击退出日历
+        # 退出日历按钮
+        if content_x + 50 <= x_rot <= content_x + 50 + 200 and 50 <= y_rot <= 85:
             restore_kindle()
             print("[quit] Exiting calendar...")
             sys.exit(0)
+        # 触屏校准按钮
+        if content_x + 50 <= x_rot <= content_x + 50 + 200 and 100 <= y_rot <= 135:
+            print("[calib] Starting calibration")
+            dot_positions = [(100, 100), (700, 100), (400, 300), (100, 500), (700, 500)]
+            calibration_state = {
+                "phase": 0,
+                "points": [],
+                "dot_positions": dot_positions,
+            }
+            current_view = "calibration"
+            render_current()
+            return False
         return False
 
     # 主内容区触摸 - 日视图和三日视图支持左右滑动切换日期
@@ -270,12 +422,20 @@ def render_current(full=True):
     """渲染当前视图并推送到屏幕"""
     print(f"[render] rendering view: {current_view}, date: {current_date}, full={full}")
     try:
-        events = fetch_events()
-        render_frame(current_view, current_date.isoformat(), events, IMG_PATH)
-        if full:
+        if current_view == "calibration" and calibration_state is not None:
+            # 校准视图：直接渲染，不需要fetch
+            img = Image.new('L', (W, H), 255)
+            draw = ImageDraw.Draw(img)
+            render_calibration_view(draw, calibration_state["phase"], calibration_state["dot_positions"])
+            img.save(IMG_PATH)
             show_image_full(IMG_PATH)
         else:
-            show_image_partial(IMG_PATH)
+            events = fetch_events()
+            render_frame(current_view, current_date.isoformat(), events, IMG_PATH)
+            if full:
+                show_image_full(IMG_PATH)
+            else:
+                show_image_partial(IMG_PATH)
         print(f"[render] success")
     except Exception as e:
         print(f"[render] Error: {e}")

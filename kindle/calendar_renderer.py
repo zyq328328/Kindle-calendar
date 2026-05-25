@@ -407,6 +407,48 @@ QUADRANT_LABELS = [
     ("紧急不重要", "not_important", "urgent"),
 ]
 
+def render_confirm_dialog(draw, title, confirm_text="确认", cancel_text="取消"):
+    """渲染确认对话框（居中显示）"""
+    font_title = make_font(22)
+    font_btn = make_font(20)
+
+    # 对话框尺寸
+    dialog_w = 320
+    dialog_h = 160
+    dialog_x = (W - dialog_w) // 2
+    dialog_y = (H - dialog_h) // 2
+
+    # 背景（深灰）
+    draw.rectangle([(dialog_x, dialog_y), (dialog_x + dialog_w, dialog_y + dialog_h)], fill=200)
+    # 边框
+    draw.rectangle([(dialog_x, dialog_y), (dialog_x + dialog_w, dialog_y + dialog_h)], outline=0, width=2)
+
+    # 标题
+    title_x = dialog_x + (dialog_w - tb(22, title)) // 2
+    draw.text((title_x, dialog_y + 20), title, font=font_title, fill=0)
+
+    # 按钮区域
+    btn_y = dialog_y + 70
+    btn_h = 40
+    btn_w = 100
+
+    # 取消按钮（左）
+    cancel_x = dialog_x + 40
+    draw.rectangle([(cancel_x, btn_y), (cancel_x + btn_w, btn_y + btn_h)], fill=220)
+    cancel_text_w = tb(20, cancel_text)
+    draw.text((cancel_x + (btn_w - cancel_text_w) // 2, btn_y + 8), cancel_text, font=font_btn, fill=0)
+
+    # 确认按钮（右）
+    confirm_x = dialog_x + dialog_w - 40 - btn_w
+    draw.rectangle([(confirm_x, btn_y), (confirm_x + btn_w, btn_y + btn_h)], fill=180)
+    confirm_text_w = tb(20, confirm_text)
+    draw.text((confirm_x + (btn_w - confirm_text_w) // 2, btn_y + 8), confirm_text, font=font_btn, fill=0)
+
+    return {
+        "cancel": (cancel_x, btn_y, cancel_x + btn_w, btn_y + btn_h),
+        "confirm": (confirm_x, btn_y, confirm_x + btn_w, btn_y + btn_h),
+    }
+
 def render_quadrant_view(draw, events, content_x):
     """Four quadrant view - only todo and habit, filter out completed"""
     font_title = make_font(20)
@@ -454,17 +496,90 @@ def render_quadrant_view(draw, events, content_x):
                 draw.text((x + 22 + indent, event_y), title, font=font_small, fill=0)
                 event_y += 24
 
+def render_confirm_view(draw, events, content_x, event_title="未知"):
+    """确认取消页面 - 显示待确认的项目，两个按钮"""
+    font_title = make_font(24)
+    font_msg = make_font(20)
+    font_btn = make_font(22)
+
+    # 标题
+    y = 80
+    title = "确认取消完成"
+    title_w = tb(24, title)
+    draw.text((content_x + (W - content_x - title_w) // 2, y), title, font=font_title, fill=0)
+    y += 50
+
+    # 显示待确认的事件标题
+    msg = f"「{event_title}」"
+    msg_w = tb(20, msg)
+    draw.text((content_x + (W - content_x - msg_w) // 2, y), msg, font=font_msg, fill=0)
+    y += 60
+
+    # 两个按钮：左侧取消，右侧确认
+    btn_y = y + 40
+    btn_h = 50
+    btn_w = 140
+    total_w = W - content_x
+    gap = 40
+
+    # 取消按钮（左侧）
+    cancel_x = content_x + (total_w - 2 * btn_w - gap) // 2
+    draw.rectangle([(cancel_x, btn_y), (cancel_x + btn_w, btn_y + btn_h)], fill=220)
+    cancel_text = "取消"
+    cancel_text_w = tb(22, cancel_text)
+    draw.text((cancel_x + (btn_w - cancel_text_w) // 2, btn_y + 10), cancel_text, font=font_btn, fill=0)
+
+    # 确认按钮（右侧）
+    confirm_x = cancel_x + btn_w + gap
+    draw.rectangle([(confirm_x, btn_y), (confirm_x + btn_w, btn_y + btn_h)], fill=180)
+    confirm_text = "确认"
+    confirm_text_w = tb(22, confirm_text)
+    draw.text((confirm_x + (btn_w - confirm_text_w) // 2, btn_y + 10), confirm_text, font=font_btn, fill=0)
+
+    return {
+        "cancel": (cancel_x, btn_y, cancel_x + btn_w, btn_y + btn_h),
+        "confirm": (confirm_x, btn_y, confirm_x + btn_w, btn_y + btn_h),
+    }
+
+
 def render_settings_view(draw, content_x):
     """Settings view"""
     font_button = make_font(24)
-    
+
+    # 退出日历按钮
     y = 50
     button_w = 200
     button_h = 35
     button_x = content_x + 50
-    
     draw.rectangle([(button_x, y), (button_x + button_w, y + button_h)], fill=240)
     draw.text((button_x + 40, y + 5), "退出日历", font=font_button, fill=0)
+
+    # 触屏校准按钮
+    y = 100
+    draw.rectangle([(button_x, y), (button_x + button_w, y + button_h)], fill=240)
+    draw.text((button_x + 20, y + 5), "触屏校准", font=font_button, fill=0)
+
+
+def render_calibration_view(draw, phase, dot_positions):
+    """触屏校准视图 - 显示多个校准点"""
+    font_title = make_font(24)
+    font_num = make_font(32)
+    font_hint = make_font(18)
+
+    # 显示提示
+    draw.text((20, 20), "触屏校准", font=font_title, fill=0)
+    draw.text((20, 50), f"点击第 {phase + 1} 个点", font=font_hint, fill=80)
+
+    # 绘制已有点和待点击点
+    for i, (x, y) in enumerate(dot_positions):
+        # 画圆点
+        r = 15
+        fill = 0 if i < phase else 180  # 已点击=黑，待点击=灰
+        draw.ellipse([(x - r, y - r), (x + r, y + r)], fill=fill, outline=0)
+        # 画序号
+        num_text = str(i + 1)
+        num_w = tb(32, num_text)
+        draw.text((x - num_w // 2, y - 16), num_text, font=font_num, fill=255 if i >= phase else 255)
 
 def render_frame(view, date_str, events, output_path):
     """Main render function"""
@@ -495,5 +610,9 @@ def render_frame(view, date_str, events, output_path):
         render_quadrant_view(draw, events, content_x)
     elif view == "settings":
         render_settings_view(draw, content_x)
-    
+    elif view == "confirm":
+        render_confirm_view(draw, events, content_x)
+    elif view == "calibration":
+        render_calibration_view(draw, phase, dot_positions)
+
     img.save(output_path)

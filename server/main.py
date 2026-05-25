@@ -108,6 +108,25 @@ def habit_checkin(event_id: int, date: str):
         raise HTTPException(status_code=500, detail="Update failed")
     return serialize_event(updated)
 
+@app.post("/api/habits/{event_id}/uncheck")
+def habit_uncheck(event_id: int, date: str):
+    """取消习惯打卡：清空 last_completed_date"""
+    # 验证日期格式
+    try:
+        from datetime import datetime
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
+    ev = get_event_by_id(event_id)
+    if not ev:
+        raise HTTPException(status_code=404, detail="Habit not found")
+    if ev.get("type") != "habit":
+        raise HTTPException(status_code=400, detail="Not a habit")
+    updated = update_event(event_id, {"last_completed_date": None})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Update failed")
+    return serialize_event(updated)
+
 @app.get("/api/sync", response_model=SyncResponse)
 def sync(since: Optional[str] = None):
     if since:
