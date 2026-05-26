@@ -306,7 +306,7 @@ def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
     habit_start = datetime.strptime(habit.get("start_date", habit["date"]), "%Y-%m-%d")
-    current = max(habit_start, start)
+    anchor_day = habit_start.day
 
     # 重复结束日期（没有则无期限）
     habit_end_str = habit.get("end_date") or None
@@ -330,9 +330,17 @@ def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]
                 month = 1
                 year += 1
             max_day = calendar.monthrange(year, month)[1]
-            day = min(cur.day, max_day)
+            day = min(anchor_day, max_day)
             return datetime(year, month, day)
         return cur + timedelta(days=1)
+
+    current = habit_start
+    for _ in range(1000):
+        if current >= start:
+            break
+        current = _next(current, rule)
+    else:
+        return []
 
     # 第一遍：收集所有日期
     all_dates = []
@@ -354,11 +362,15 @@ def expand_recurrence(habit: dict, start_date: str, end_date: str) -> list[dict]
         if habit_end and cur > habit_end:
             break
         occ = dict(habit)
-        occ["date"] = cur.strftime("%Y-%m-%d")
+        date_str = cur.strftime("%Y-%m-%d")
+        occ["date"] = date_str
         occ["display_dates"] = all_dates
-        # 习惯完成判断：只检查 last_completed_date 是否等于当前日期（与 completed 全局字段无关）
-        last_done = habit.get("last_completed_date", "")
-        occ["completed"] = last_done and last_done == cur.strftime("%Y-%m-%d")
+        if habit.get("type") == "habit":
+            # 习惯完成判断：只检查 last_completed_date 是否等于当前日期（与 completed 全局字段无关）
+            last_done = habit.get("last_completed_date", "")
+            occ["completed"] = bool(last_done and last_done == date_str)
+        else:
+            occ["completed"] = bool(habit.get("completed"))
         occ["is_countdown"] = bool(occ.get("is_countdown"))
         occurrences.append(occ)
         cur = _next(cur, rule)

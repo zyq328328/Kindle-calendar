@@ -369,7 +369,7 @@ function openAdd() {
   editing.value = null
   form.value = {
     title: '', date: selectedDate.value, time: '', type: 'schedule',
-    importance: 'not_important_not_urgent', description: '',
+    importance: 'not_important', urgency: 'not_urgent', description: '',
     is_countdown: false, recurrence_rule: 'none',
     start_date: selectedDate.value, end_date: selectedDate.value,
     last_completed_date: '', parent_id: null
@@ -397,7 +397,7 @@ async function toggleDone(ev) {
   await fetchEvents()
 }
 async function checkin(ev) {
-  await store.updateEvent(ev.id, { last_completed_date: selectedDate.value })
+  await store.checkinHabit(ev.id, selectedDate.value)
   await fetchEvents()
 }
 async function remove(id) {

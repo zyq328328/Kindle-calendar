@@ -51,11 +51,7 @@ def list_events(start: Optional[str] = None, end: Optional[str] = None):
 def list_event_tree():
     """获取事件树：顶级任务 + 嵌套的 children（含缩进层级）"""
     tree = get_event_tree()
-    for e in tree:
-        serialize_event(e)
-        for c in e.get("children", []):
-            serialize_event(c)
-    return tree
+    return [serialize_event(e) for e in tree]
 
 @app.post("/api/events", response_model=Event, status_code=201)
 def create(event: EventCreate):
@@ -171,11 +167,14 @@ KINDLE_KEY = os.environ.get("KINDLE_KEY", "C:/Users/Alex/Desktop/kindle_key")
 
 def serialize_event(e: dict) -> dict:
     """将 SQLite 返回的 INTEGER 布尔值转为 Python bool（不修改原 dict）"""
-    return {
+    data = {
         **e,
-        "is_countdown": bool(e["is_countdown"]),
-        "completed": bool(e["completed"]),
+        "is_countdown": bool(e.get("is_countdown", False)),
+        "completed": bool(e.get("completed", False)),
     }
+    if "children" in data:
+        data["children"] = [serialize_event(child) for child in data.get("children", [])]
+    return data
 
 
 def tb(font, text):
@@ -311,7 +310,7 @@ def _render_three_day_view(draw, now, font_tiny, font_small, font_medium, font_t
 
         # 日程（tiny 字体，充分利用列宽）
         date_str = day.strftime("%Y-%m-%d")
-        day_events = [e for e in get_all_events() if e.get("date", "").startswith(date_str)]
+        day_events = get_events_in_range(date_str, date_str)
         y = EV_Y
         for ev in day_events[:MAX_EVS]:
             t = ev.get("time", "")[:5]
