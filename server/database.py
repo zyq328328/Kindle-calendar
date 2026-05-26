@@ -210,37 +210,29 @@ def get_event_tree() -> list[dict]:
     # 用 get_events_in_range 展开重复规则
     all_events = get_events_in_range(start, end)
 
-    # 按日期分组，同一 id 的不同日期 occurrence 分组
-    date_groups = {}  # {id: {date: event}}
-    for ev in all_events:
-        ev_id = ev["id"]
-        ev_date = ev.get("date", "")
-        if ev_id not in date_groups:
-            date_groups[ev_id] = {}
-        date_groups[ev_id][ev_date] = ev
-
-    # 构建 parent_id -> children 映射（按日期区分）
-    children_map = {}  # {(parent_id, date): [events]}
+    # 构建 parent_id -> children 映射（忽略日期，同一父级的所有子项归为一组）
+    children_map = {}  # {parent_id: [events]}
     root_events = []  # [(event, date)]
+    seen_root_ids = set()  # 避免重复的父级事件
 
     for ev in all_events:
         pid = ev.get("parent_id")
-        ev_date = ev.get("date", "")
 
         if pid is not None:
-            key = (pid, ev_date)
-            if key not in children_map:
-                children_map[key] = []
-            children_map[key].append(ev)
+            if pid not in children_map:
+                children_map[pid] = []
+            children_map[pid].append(ev)
         else:
-            root_events.append((ev, ev_date))
+            # 顶级任务：如果同一 id 多次出现，只保留第一个
+            if ev["id"] not in seen_root_ids:
+                root_events.append((ev, ev.get("date", "")))
+                seen_root_ids.add(ev["id"])
 
-    # 给每个事件附加 children（按日期匹配）
+    # 给每个事件附加 children（所有子项，不按日期区分）
     for ev in all_events:
-        key = (ev["id"], ev.get("date", ""))
-        ev["children"] = children_map.get(key, [])
+        ev["children"] = children_map.get(ev["id"], [])
 
-    # 返回顶级任务（无 parent_id），每个日期的 occurrence 单独作为一个节点
+    # 返回顶级任务（无 parent_id），去重后
     return [ev for ev, _ in root_events]
 
 def migrate_add_missing_columns():

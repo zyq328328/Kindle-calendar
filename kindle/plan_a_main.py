@@ -7,6 +7,7 @@ Kindle 日历主程序 - 三栏布局
 """
 import os
 import sys
+import signal
 import datetime
 import time
 import subprocess
@@ -39,12 +40,28 @@ confirm_state = None
 calibration_state = None
 
 
+def disable_kindle_framework():
+    """禁用 Kindle 系统框架，获取独占触摸控制权（KOReader 方式）
+    只在 FW >= 5.7.2 时需要停止 awesome
+    """
+    print("[framework] Disabling Kindle system...")
+    try:
+        # 禁用 pillow（KOReader 方式：FW >= 5.6.5 时硬禁用）
+        subprocess.run(
+            ["lipc-set-prop", "com.lab126.pillow", "disableEnablePillow", "disable"],
+            stderr=subprocess.DEVNULL
+        )
+        # 停止 awesome（窗口管理器）- KOReader 在 FW >= 5.7.2 且从 KUAL 启动时使用
+        subprocess.run(["killall", "-STOP", "awesome"], stderr=subprocess.DEVNULL)
+        print("[framework] Kindle system disabled")
+    except Exception as e:
+        print(f"[framework] Error: {e}")
+
+
 def restore_kindle():
     """恢复 Kindle 系统功能"""
     print("[quit] Restoring Kindle system...")
     try:
-        # 恢复 volumd
-        subprocess.run(["killall", "-CONT", "volumd"], stderr=subprocess.DEVNULL)
         # 恢复 awesome
         subprocess.run(["killall", "-CONT", "awesome"], stderr=subprocess.DEVNULL)
         # 恢复 pillow
@@ -258,14 +275,18 @@ def handle_touch(x_phys, y_phys):
     if current_view == "confirm" or confirm_state is not None:
         # 确认页面按钮检测（与 render_confirm_view 一致）
         # render_confirm_view: y=80 → +50=130 → +60=190, btn_y=190+40=230
+        content_x = 0  # 确认页面content_x=0
         btn_h = 50
-        btn_w = 140
-        total_w = W
-        gap = 40
+        btn_w = 160  # 增大按钮宽度
+        total_w = W - content_x  # 与 render_confirm_view 一致
+        gap = 50  # 增大间距
 
-        cancel_x = (total_w - 2 * btn_w - gap) // 2
+        cancel_x = content_x + (total_w - 2 * btn_w - gap) // 2
         confirm_x = cancel_x + btn_w + gap
-        btn_y = 230
+        # 扩大按钮范围，向外扩展10像素便于点击
+        btn_y = 220  # 原230，向外扩展10像素
+
+        print(f"[confirm] Touch at ({x_rot}, {y_rot}), cancel_x={cancel_x}, confirm_x={confirm_x}, btn_y={btn_y}")
 
         if cancel_x <= x_rot <= cancel_x + btn_w and btn_y <= y_rot <= btn_y + btn_h:
             # 取消
@@ -336,22 +357,13 @@ def handle_touch(x_phys, y_phys):
                     ev_type = tapped_todo.get("type")
                     event_id = tapped_todo["id"]
 
-                    # 检查完成状态（用渲染时的逻辑：直接用 ev.get("completed")）
-                    completed = tapped_todo.get("completed", False)
+                    # 检查完成状态（habit用last_completed_date判断，非habit用completed字段）
+                    completed = _is_event_completed(tapped_todo, [], today_str) if ev_type == "habit" else tapped_todo.get("completed", False)
                     print(f"[touch] completed={completed}, ev_type={ev_type}")
 
                     if completed:
-                        # 已完成：直接渲染确认页面
-                        print(f"[touch] Event completed, rendering confirm page")
-                        from PIL import Image as Img
-                        img = Img.new('L', (W, H), 255)
-                        draw = ImageDraw.Draw(img)
-                        # 渲染确认页面
-                        render_confirm_view(draw, [], 0, event_title=tapped_todo.get("title", "未知"))
-                        # 保存并推送
-                        img.save("/tmp/calendar_confirm.png")
-                        show_image_full("/tmp/calendar_confirm.png")
-                        # 切换到确认视图
+                        # 已完成：切换到确认视图，让 render_current() 统一处理
+                        print(f"[touch] Event completed, showing confirm page")
                         current_view = "confirm"
                         confirm_state = {
                             "event_id": event_id,
@@ -359,7 +371,7 @@ def handle_touch(x_phys, y_phys):
                             "date": today_str,
                             "event_title": tapped_todo.get("title", "未知"),
                         }
-                        return False
+                        return True
                     else:
                         # 未完成：标记为完成
                         if ev_type == "habit":
@@ -420,6 +432,7 @@ def handle_touch(x_phys, y_phys):
 
 def render_current(full=True):
     """渲染当前视图并推送到屏幕"""
+    global confirm_state
     print(f"[render] rendering view: {current_view}, date: {current_date}, full={full}")
     try:
         if current_view == "calibration" and calibration_state is not None:
@@ -427,6 +440,14 @@ def render_current(full=True):
             img = Image.new('L', (W, H), 255)
             draw = ImageDraw.Draw(img)
             render_calibration_view(draw, calibration_state["phase"], calibration_state["dot_positions"])
+            img.save(IMG_PATH)
+            show_image_full(IMG_PATH)
+        elif current_view == "confirm" and confirm_state is not None:
+            # 确认页面：直接渲染，传递 event_title
+            img = Image.new('L', (W, H), 255)
+            draw = ImageDraw.Draw(img)
+            event_title = confirm_state.get("event_title", "未知")
+            render_confirm_view(draw, [], 0, event_title=event_title)
             img.save(IMG_PATH)
             show_image_full(IMG_PATH)
         else:
@@ -464,7 +485,18 @@ def clock_refresh_loop():
 def main():
     """主循环"""
     global auto_refresh_enabled, auto_refresh_thread
+
+    # 忽略 SIGPIPE，避免向已关闭的管道写入时崩溃
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
+    # 重定向 stdout/stderr 到日志文件，避免 KUAL 启动时管道关闭问题
+    sys.stdout = open('/tmp/calendar_out.log', 'w', buffering=1)
+    sys.stderr = open('/tmp/calendar_err.log', 'w', buffering=1)
+
     print("[plan_a] Starting Kindle Calendar (三栏布局)")
+
+    # 禁用 Kindle 系统框架，获取独占触摸控制权
+    disable_kindle_framework()
 
     # 初始渲染
     render_current()

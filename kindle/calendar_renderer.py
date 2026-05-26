@@ -516,11 +516,11 @@ def render_confirm_view(draw, events, content_x, event_title="未知"):
     y += 60
 
     # 两个按钮：左侧取消，右侧确认
-    btn_y = y + 40
+    btn_y = y + 40  # 向外扩展10像素便于点击
     btn_h = 50
-    btn_w = 140
+    btn_w = 160  # 增大按钮宽度
     total_w = W - content_x
-    gap = 40
+    gap = 50  # 增大间距
 
     # 取消按钮（左侧）
     cancel_x = content_x + (total_w - 2 * btn_w - gap) // 2
