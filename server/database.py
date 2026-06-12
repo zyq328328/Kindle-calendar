@@ -219,9 +219,11 @@ def get_event_tree() -> list[dict]:
         pid = ev.get("parent_id")
 
         if pid is not None:
+            # 子项去重：同一 id 在同一父级下只保留一条（修复 get_events_in_range 展开多日非重复任务造成的重复）
             if pid not in children_map:
                 children_map[pid] = []
-            children_map[pid].append(ev)
+            if ev["id"] not in {c["id"] for c in children_map[pid]}:
+                children_map[pid].append(ev)
         else:
             # 顶级任务：如果同一 id 多次出现，只保留第一个
             if ev["id"] not in seen_root_ids:
